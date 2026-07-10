@@ -46,8 +46,8 @@ function App() {
   return (
     <div className="contenedor-principal">
       <aside className="sidebar">
-        <h2>Fiscal Pro</h2>
-        <p>JHONATTAN Y DEBORA</p>
+        <h2>PROYECCION FISCAL</h2>
+        <p>DEBORA</p>
         <hr style={{ opacity: 0.2 }} />
         <div style={{ marginTop: '20px' }}>
           <input
@@ -79,25 +79,29 @@ function App() {
           </div>
         ) : resultado ? (
           <div className="tarjeta-resultado">
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <h1>Proyección Fiscal</h1>
-              <span
-                className="badge-probabilidad"
-                style={{
-                  backgroundColor: resultado.decision === 'FORMALIZAR' ? '#dcfce7' : '#ffedd5',
-                  color: resultado.decision === 'FORMALIZAR' ? '#166534' : '#9a3412',
-                }}
-              >
-                Probabilidad: {resultado.probabilidadExito}
-              </span>
-            </div>
+    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+      <h1>Proyección Fiscal</h1>
+      <span className="badge-probabilidad" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
+        Probabilidad: {resultado.probabilidadExito}
+      </span>
+    </div>
+    
+    <h3>Resumen Fáctico</h3>
+    <p>{resultado.resumenCronologico}</p>
+    
+    <h3>Elementos de Convicción</h3>
+    <ul>
+      {resultado.elementosDeConviccion && resultado.elementosDeConviccion.map((item, i) => <li key={i}>{item}</li>)}
+    </ul>
 
-            <h3>Resumen Fáctico</h3>
-            <p>{resultado.resumenCronologico}</p>
+    <h3>Diligencias Faltantes</h3>
+    <ul>
+      {resultado.diligenciasFaltantes && resultado.diligenciasFaltantes.map((item, i) => <li key={i}>{item}</li>)}
+    </ul>
 
-            <h3>Sustento Jurídico</h3>
-            <p>{resultado.sustentoJuridico}</p>
-          </div>
+    <h3>Sustento Jurídico</h3>
+    <p>{resultado.sustentoJuridico}</p>
+  </div>
         ) : (
           <div className="tarjeta-resultado" style={{ textAlign: 'center', padding: '60px' }}>
             <p>Selecciona tus archivos y comienza el análisis de caso.</p>
