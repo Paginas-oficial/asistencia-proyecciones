@@ -1,0 +1,6 @@
+node_modules/
+.env
+uploads/
+caso_prueba.pdf
+web-fiscal/node_modules/
+web-fiscal/dist/
