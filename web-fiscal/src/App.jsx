@@ -1,34 +1,46 @@
 import { useState } from 'react'
 
 function App() {
-  const [archivo, setArchivo] = useState(null)
+  // Ahora manejamos un array de archivos
+  const [archivos, setArchivos] = useState([])
   const [cargando, setCargando] = useState(false)
   const [resultado, setResultado] = useState(null)
 
   const manejarCambioArchivo = (e) => {
-    setArchivo(e.target.files[0])
+    // Guardamos todos los archivos seleccionados
+    setArchivos(e.target.files)
   }
 
   const procesarExpediente = async (e) => {
     e.preventDefault()
-    if (!archivo) return alert('Por favor, selecciona un PDF primero.')
+    // Validamos que exista al menos 1
+    if (!archivos || archivos.length === 0) return alert('Por favor, selecciona al menos un tomo en PDF.')
 
     setCargando(true)
     const formData = new FormData()
-    formData.append('documentoPdf', archivo)
+    
+    // Bucle para empaquetar todos los tomos en el formulario bajo el nombre plural 'documentosPdf'
+    Array.from(archivos).forEach(archivo => {
+      formData.append('documentosPdf', archivo)
+    })
 
     try {
-      // Llamamos a tu servidor de Node.js que está en el puerto 3000
-      const respuesta = await fetch('http://localhost:3000/api/analizar-caso', {
+      const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-caso', {
         method: 'POST',
-        body: formData,
+        body: formData, // Enviamos el paquete completo
       })
       
       const datos = await respuesta.json()
+
+      if (!respuesta.ok) {
+        throw new Error(datos.error || 'Error desconocido en el servidor');
+      }
+
       setResultado(datos)
     } catch (error) {
       console.error(error)
-      alert('Hubo un error de conexión con el servidor fiscal.')
+      alert(`Ocurrió un problema: ${error.message}`)
+      setResultado(null)
     } finally {
       setCargando(false)
     }
@@ -54,10 +66,20 @@ function App() {
               <input 
                 type="file" 
                 accept="application/pdf" 
+                multiple /* <-- ESTA PALABRA ES LA CLAVE MÁGICA */
                 onChange={manejarCambioArchivo} 
                 style={{ marginBottom: '10px' }}
               />
-              <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>Solo archivos PDF. Se analizará tipicidad y elementos de convicción.</p>
+              <p style={{ margin: 0, color: '#64748b', fontSize: '14px' }}>
+                Puedes seleccionar múltiples tomos a la vez (Mantén presionado Ctrl o Shift al elegir).
+              </p>
+              
+              {/* Mostramos el conteo visual de tomos cargados */}
+              {archivos.length > 0 && (
+                <div style={{ marginTop: '15px', padding: '10px', backgroundColor: '#e0f2fe', color: '#0369a1', borderRadius: '5px', fontWeight: 'bold' }}>
+                  {archivos.length} tomo(s) seleccionado(s) listos para análisis.
+                </div>
+              )}
             </div>
             
             <button 
@@ -85,7 +107,7 @@ function App() {
 
           {cargando && (
             <div style={{ textAlign: 'center', color: '#2563eb', marginTop: '100px', fontWeight: 'bold' }}>
-              <p>Leyendo el expediente. Esto puede tomar un minuto dependiendo del tamaño del tomo...</p>
+              <p>Leyendo el expediente. Esto puede tomar un minuto dependiendo del tamaño del documento...</p>
             </div>
           )}
 
