@@ -101,24 +101,22 @@ function App() {
             
             <h3>Elementos de Convicción Hallados</h3>
             <ul>
-              {/* Aquí arreglamos el problema de las listas vacías */}
-              {Array.isArray(resultado.elementosDeConviccion) 
-                ? resultado.elementosDeConviccion.map((item, i) => <li key={i} style={{marginBottom: '8px'}}>{item}</li>)
-                : String(resultado.elementosDeConviccion || '').split('\n').map((item, i) => item.trim() !== '' ? <li key={i} style={{marginBottom: '8px'}}>{item.replace(/^- /, '')}</li> : null)
+              {Array.isArray(resultado.elementosDeConviccion || resultado.elementosConviccion) 
+                ? (resultado.elementosDeConviccion || resultado.elementosConviccion).map((item, i) => <li key={i} style={{marginBottom: '8px'}}>{item}</li>)
+                : String(resultado.elementosDeConviccion || resultado.elementosConviccion || 'No se detectaron elementos. Verifica que el documento contenga esta información.').split('\n').map((item, i) => item.trim() !== '' && item !== 'undefined' ? <li key={i} style={{marginBottom: '8px'}}>{item.replace(/^- /, '')}</li> : null)
               }
             </ul>
 
             <h3>Diligencias Faltantes (Plan de Trabajo)</h3>
-            {/* Convertimos esto en una lista de tareas interactiva */}
             <ul className="lista-diligencias">
-              {Array.isArray(resultado.diligenciasFaltantes)
-                ? resultado.diligenciasFaltantes.map((item, i) => (
+              {Array.isArray(resultado.diligenciasFaltantes || resultado.elementosFaltantes)
+                ? (resultado.diligenciasFaltantes || resultado.elementosFaltantes).map((item, i) => (
                     <li key={i}>
                       <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
                       <label htmlFor={`check-${i}`} style={{ cursor: 'pointer' }}>{item}</label>
                     </li>
                   ))
-                : String(resultado.diligenciasFaltantes || '').split('\n').map((item, i) => item.trim() !== '' ? (
+                : String(resultado.diligenciasFaltantes || resultado.elementosFaltantes || 'No se sugirieron diligencias adicionales.').split('\n').map((item, i) => item.trim() !== '' && item !== 'undefined' ? (
                     <li key={i}>
                       <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
                       <label htmlFor={`check-${i}`} style={{ cursor: 'pointer' }}>{item.replace(/^- /, '')}</label>
