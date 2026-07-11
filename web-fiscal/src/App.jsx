@@ -73,38 +73,69 @@ function App() {
       </aside>
 
       <main className="contenido">
-        {cargando ? (
-          <div className="tarjeta-resultado" style={{ textAlign: 'center', padding: '60px' }}>
-            <p>Leyendo el expediente. Esto puede tomar un minuto dependiendo del tamaño del documento...</p>
-          </div>
-        ) : resultado ? (
+        {resultado ? (
           <div className="tarjeta-resultado">
-    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-      <h1>Proyección Fiscal</h1>
-      <span className="badge-probabilidad" style={{ backgroundColor: '#dcfce7', color: '#166534' }}>
-        Probabilidad: {resultado.probabilidadExito}
-      </span>
-    </div>
-    
-    <h3>Resumen Fáctico</h3>
-    <p>{resultado.resumenCronologico}</p>
-    
-    <h3>Elementos de Convicción</h3>
-    <ul>
-      {resultado.elementosDeConviccion && resultado.elementosDeConviccion.map((item, i) => <li key={i}>{item}</li>)}
-    </ul>
+            
+            {/* Cabecera */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h1 style={{ margin: 0, color: '#1e293b' }}>Análisis del Caso</h1>
+              <span className="badge-probabilidad" style={{ backgroundColor: '#dcfce7', color: '#166534', fontSize: '1rem' }}>
+                Probabilidad: {resultado.probabilidadExito}
+              </span>
+            </div>
 
-    <h3>Diligencias Faltantes</h3>
-    <ul>
-      {resultado.diligenciasFaltantes && resultado.diligenciasFaltantes.map((item, i) => <li key={i}>{item}</li>)}
-    </ul>
+            {/* Lógica del Veredicto Automático */}
+            <div className={`banner-veredicto ${
+              String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
+              String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
+              ? 'banner-formalizar' : 'banner-archivar'
+            }`}>
+              {String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
+               String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
+                ? '⚖️ SUGERENCIA: FORMALIZAR INVESTIGACIÓN PREPARATORIA' 
+                : '🗂️ SUGERENCIA: ARCHIVO PRELIMINAR'}
+            </div>
+            
+            <h3>Resumen Fáctico</h3>
+            <p>{resultado.resumenCronologico}</p>
+            
+            <h3>Elementos de Convicción Hallados</h3>
+            <ul>
+              {/* Aquí arreglamos el problema de las listas vacías */}
+              {Array.isArray(resultado.elementosDeConviccion) 
+                ? resultado.elementosDeConviccion.map((item, i) => <li key={i} style={{marginBottom: '8px'}}>{item}</li>)
+                : String(resultado.elementosDeConviccion || '').split('\n').map((item, i) => item.trim() !== '' ? <li key={i} style={{marginBottom: '8px'}}>{item.replace(/^- /, '')}</li> : null)
+              }
+            </ul>
 
-    <h3>Sustento Jurídico</h3>
-    <p>{resultado.sustentoJuridico}</p>
-  </div>
+            <h3>Diligencias Faltantes (Plan de Trabajo)</h3>
+            {/* Convertimos esto en una lista de tareas interactiva */}
+            <ul className="lista-diligencias">
+              {Array.isArray(resultado.diligenciasFaltantes)
+                ? resultado.diligenciasFaltantes.map((item, i) => (
+                    <li key={i}>
+                      <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
+                      <label htmlFor={`check-${i}`} style={{ cursor: 'pointer' }}>{item}</label>
+                    </li>
+                  ))
+                : String(resultado.diligenciasFaltantes || '').split('\n').map((item, i) => item.trim() !== '' ? (
+                    <li key={i}>
+                      <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
+                      <label htmlFor={`check-${i}`} style={{ cursor: 'pointer' }}>{item.replace(/^- /, '')}</label>
+                    </li>
+                  ) : null)
+              }
+            </ul>
+
+            <h3>Sustento Jurídico</h3>
+            <p style={{ background: '#f1f5f9', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #64748b' }}>
+              {resultado.sustentoJuridico}
+            </p>
+          </div>
         ) : (
-          <div className="tarjeta-resultado" style={{ textAlign: 'center', padding: '60px' }}>
-            <p>Selecciona tus archivos y comienza el análisis de caso.</p>
+          <div className="tarjeta-resultado" style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
+            <h2>Listo para procesar</h2>
+            <p>Sube los tomos del expediente y obtén una proyección estructurada.</p>
           </div>
         )}
       </main>
