@@ -8,6 +8,8 @@ body {
 .contenedor-principal {
   display: flex;
   min-height: 100vh;
+  width: 100vw;
+  overflow-x: hidden; /* Esto elimina la barra gris gigante de abajo */
 }
 
 /* Sidebar (Oscuro y Profesional) */
@@ -22,6 +24,8 @@ body {
 .contenido {
   flex: 1;
   padding: 40px;
+  max-width: calc(100vw - 300px); /* Evita que crezca más allá de la pantalla */
+  box-sizing: border-box;
 }
 
 .tarjeta-resultado {
@@ -30,6 +34,13 @@ body {
   border-radius: 12px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   margin-bottom: 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.cajon-scroll-horizontal {
+  width: 100%;
+  overflow-x: auto; /* Solo este cajón tendrá barra deslizable */
+  padding-bottom: 15px;
 }
 
 .boton-analizar {
@@ -146,14 +157,12 @@ body {
 /* Línea de Tiempo Horizontal */
 .linea-tiempo {
   display: flex;
-  overflow-x: auto; /* Permite hacer scroll hacia la derecha si hay muchos eventos */
   padding: 45px 15px 25px 15px; 
-  margin: 30px 0;
+  margin: 15px 0 0 0;
   list-style: none;
-  border-left: none; /* Quitamos la línea vertical */
-  border-top: 3px solid #cbd5e1; /* Nueva línea principal horizontal */
-  gap: 25px; /* Espacio entre cada tarjeta */
-  scroll-behavior: smooth;
+  border-top: 3px solid #cbd5e1; 
+  gap: 25px; 
+  width: max-content; /* Permite que la línea sea infinita solo dentro de su cajón */
 }
 
 /* Estilizamos la barra de desplazamiento para que se vea moderna */

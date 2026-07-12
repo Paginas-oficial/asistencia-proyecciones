@@ -148,17 +148,21 @@ function App() {
             </div>
             
             <h3>Resumen Fáctico</h3>
-            {/* NUEVO: Línea de Tiempo Horizontal Inteligente */}
+            
+            {/* Este es el párrafo del resumen que se había borrado */}
+            <p style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.7' }}>
+              {resultado.resumenCronologico}
+            </p>
+
+            {/* Y esta es la Línea de Tiempo Horizontal */}
             <h4 style={{ color: '#475569', marginTop: '35px', marginBottom: '0px' }}>Línea de Tiempo del Caso:</h4>
             <ul className="linea-tiempo">
               {resultado.resumenCronologico
-                /* Aquí está la magia: solo corta si hay un punto, un espacio y luego una MAYÚSCULA */
                 .split(/\.\s+(?=[A-ZÁÉÍÓÚ])/)
                 .map(oracion => oracion.trim())
-                .filter(oracion => oracion.length > 20) /* Filtra fragmentos inútiles */
+                .filter(oracion => oracion.length > 20)
                 .map((hito, i) => (
                   <li key={i} className="linea-tiempo-item">
-                    {/* Imprime el texto y le devuelve su punto final si se lo quitó la separación */}
                     {hito}{!hito.endsWith('.') && '.'}
                   </li>
                 ))
