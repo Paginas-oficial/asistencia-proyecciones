@@ -148,20 +148,18 @@ function App() {
             </div>
             
             <h3>Resumen Fáctico</h3>
-            <p style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-              {resultado.resumenCronologico}
-            </p>
-
-            {/* NUEVO: Línea de Tiempo Generada Automáticamente */}
-            <h4 style={{ color: '#475569', marginTop: '25px', marginBottom: '10px' }}>Desglose Cronológico:</h4>
+            {/* NUEVO: Línea de Tiempo Horizontal Inteligente */}
+            <h4 style={{ color: '#475569', marginTop: '35px', marginBottom: '0px' }}>Línea de Tiempo del Caso:</h4>
             <ul className="linea-tiempo">
               {resultado.resumenCronologico
-                .split('.')
+                /* Aquí está la magia: solo corta si hay un punto, un espacio y luego una MAYÚSCULA */
+                .split(/\.\s+(?=[A-ZÁÉÍÓÚ])/)
                 .map(oracion => oracion.trim())
-                .filter(oracion => oracion.length > 15) // Filtra espacios vacíos o frases muy cortas
+                .filter(oracion => oracion.length > 20) /* Filtra fragmentos inútiles */
                 .map((hito, i) => (
                   <li key={i} className="linea-tiempo-item">
-                    {hito}.
+                    {/* Imprime el texto y le devuelve su punto final si se lo quitó la separación */}
+                    {hito}{!hito.endsWith('.') && '.'}
                   </li>
                 ))
               }

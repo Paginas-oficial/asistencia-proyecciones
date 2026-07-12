@@ -143,39 +143,74 @@ body {
 }
 
 /* Línea de Tiempo Interactiva */
+/* Línea de Tiempo Horizontal */
 .linea-tiempo {
-  border-left: 3px solid #cbd5e1;
-  margin: 20px 0 20px 20px;
-  padding-left: 25px;
+  display: flex;
+  overflow-x: auto; /* Permite hacer scroll hacia la derecha si hay muchos eventos */
+  padding: 45px 15px 25px 15px; 
+  margin: 30px 0;
   list-style: none;
+  border-left: none; /* Quitamos la línea vertical */
+  border-top: 3px solid #cbd5e1; /* Nueva línea principal horizontal */
+  gap: 25px; /* Espacio entre cada tarjeta */
+  scroll-behavior: smooth;
 }
 
+/* Estilizamos la barra de desplazamiento para que se vea moderna */
+.linea-tiempo::-webkit-scrollbar {
+  height: 8px;
+}
+.linea-tiempo::-webkit-scrollbar-thumb {
+  background-color: #94a3b8;
+  border-radius: 10px;
+}
+.linea-tiempo::-webkit-scrollbar-track {
+  background-color: #f1f5f9;
+}
+
+/* Tarjetas individuales */
 .linea-tiempo-item {
   position: relative;
-  margin-bottom: 15px;
-  padding: 15px 20px;
+  min-width: 280px; /* Evita que se aplasten si el texto es largo */
+  max-width: 320px;
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
-  transition: transform 0.2s;
+  padding: 20px;
+  box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+  transition: transform 0.2s, border-color 0.2s;
+  margin-bottom: 0;
+  font-size: 0.95rem;
 }
 
 .linea-tiempo-item:hover {
-  transform: translateX(5px);
-  border-color: #94a3b8;
+  transform: translateY(-5px); /* Ahora flotan hacia arriba al pasar el mouse */
+  border-color: #3b82f6;
 }
 
-/* El "punto" de la línea de tiempo */
+/* El "punto" azul sobre la línea horizontal */
 .linea-tiempo-item::before {
   content: '';
   position: absolute;
-  left: -35px; /* Centrado en la línea gris */
-  top: 20px;
-  width: 14px;
-  height: 14px;
+  top: -53px; /* Lo sube hasta encajar justo en la línea gris superior */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
   background-color: #3b82f6;
   border: 3px solid white;
   border-radius: 50%;
-  box-shadow: 0 0 0 1px #cbd5e1;
+  box-shadow: 0 0 0 2px #cbd5e1;
+}
+
+/* Una pequeña "cuerda" que une el punto con la tarjeta */
+.linea-tiempo-item::after {
+  content: '';
+  position: absolute;
+  top: -33px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 33px;
+  background-color: #cbd5e1;
 }
