@@ -156,18 +156,22 @@ function App() {
 
             {/* Y esta es la Línea de Tiempo Horizontal */}
             <h4 style={{ color: '#475569', marginTop: '35px', marginBottom: '0px' }}>Línea de Tiempo del Caso:</h4>
-            <ul className="linea-tiempo">
-              {resultado.resumenCronologico
-                .split(/\.\s+(?=[A-ZÁÉÍÓÚ])/)
-                .map(oracion => oracion.trim())
-                .filter(oracion => oracion.length > 20)
-                .map((hito, i) => (
-                  <li key={i} className="linea-tiempo-item">
-                    {hito}{!hito.endsWith('.') && '.'}
-                  </li>
-                ))
-              }
-            </ul>
+            
+            {/* Aquí agregamos el cajón contenedor */}
+            <div className="cajon-scroll-horizontal">
+              <ul className="linea-tiempo">
+                {resultado.resumenCronologico
+                  .split(/\.\s+(?=[A-ZÁÉÍÓÚ])/)
+                  .map(oracion => oracion.trim())
+                  .filter(oracion => oracion.length > 20)
+                  .map((hito, i) => (
+                    <li key={i} className="linea-tiempo-item">
+                      {hito}{!hito.endsWith('.') && '.'}
+                    </li>
+                  ))
+                }
+              </ul>
+            </div>
 
             <h3>Diligencias Faltantes (Plan de Trabajo)</h3>
             <ul className="lista-diligencias">
