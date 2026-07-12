@@ -42,7 +42,53 @@ function App() {
       setCargando(false)
     }
   }
+  const exportarAWord = () => {
+    if (!resultado) return;
 
+    // Función auxiliar para leer las listas correctamente para Word
+    const formatearLista = (datos) => {
+      if (Array.isArray(datos)) return datos.map(item => `<li>${item}</li>`).join('');
+      if (typeof datos === 'string') return datos.split('\n').filter(i => i.trim()).map(item => `<li>${item.replace(/^- /, '')}</li>`).join('');
+      return '<li>No hay datos</li>';
+    };
+
+    const elementosHTML = formatearLista(resultado.elementosDeConviccion || resultado.elementosConviccion);
+    const diligenciasHTML = formatearLista(resultado.diligenciasFaltantes || resultado.elementosFaltantes);
+
+    // Plantilla HTML que Word entiende perfectamente
+    const contenidoHTML = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Proyección Fiscal</title></head>
+      <body style="font-family: Arial, sans-serif;">
+        <h1 style="text-align: center; color: #1e293b;">Análisis de Caso - Proyección Fiscal</h1>
+        <h2>1. Probabilidad de Éxito y Sugerencia</h2>
+        <p><strong>Evaluación:</strong> ${resultado.probabilidadExito}</p>
+        
+        <h2>2. Resumen Fáctico</h2>
+        <p>${resultado.resumenCronologico}</p>
+        
+        <h2>3. Elementos de Convicción Hallados</h2>
+        <ul>${elementosHTML}</ul>
+        
+        <h2>4. Diligencias Faltantes (Plan de Trabajo)</h2>
+        <ul>${diligenciasHTML}</ul>
+        
+        <h2>5. Sustento Jurídico</h2>
+        <p>${resultado.sustentoJuridico}</p>
+      </body>
+      </html>
+    `;
+
+    // Truco para descargar el archivo
+    const blob = new Blob(['\ufeff', contenidoHTML], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'Proyeccion_Fiscal_Analisis.doc';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
   return (
     <div className="contenedor-principal">
       <aside className="sidebar">
@@ -76,15 +122,20 @@ function App() {
         {resultado ? (
           <div className="tarjeta-resultado">
             
-            {/* Cabecera */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Cabecera con Botón de Exportar */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
               <h1 style={{ margin: 0, color: '#1e293b' }}>Análisis del Caso</h1>
-              <span className="badge-probabilidad" style={{ backgroundColor: '#dcfce7', color: '#166534', fontSize: '1rem' }}>
-                Probabilidad: {resultado.probabilidadExito}
-              </span>
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
+                <span className="badge-probabilidad" style={{ backgroundColor: '#dcfce7', color: '#166534', fontSize: '1rem' }}>
+                  Probabilidad: {resultado.probabilidadExito}
+                </span>
+                <button onClick={exportarAWord} className="boton-exportar">
+                  💾 Exportar a Word
+                </button>
+              </div>
             </div>
 
-            {/* Lógica del Veredicto Automático */}
+            {/* Lógica del Veredicto Automático (Mantenlo igual) */}
             <div className={`banner-veredicto ${
               String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
               String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
@@ -97,13 +148,22 @@ function App() {
             </div>
             
             <h3>Resumen Fáctico</h3>
-            <p>{resultado.resumenCronologico}</p>
-            
-            <h3>Elementos de Convicción Hallados</h3>
-            <ul>
-              {Array.isArray(resultado.elementosDeConviccion || resultado.elementosConviccion) 
-                ? (resultado.elementosDeConviccion || resultado.elementosConviccion).map((item, i) => <li key={i} style={{marginBottom: '8px'}}>{item}</li>)
-                : String(resultado.elementosDeConviccion || resultado.elementosConviccion || 'No se detectaron elementos. Verifica que el documento contenga esta información.').split('\n').map((item, i) => item.trim() !== '' && item !== 'undefined' ? <li key={i} style={{marginBottom: '8px'}}>{item.replace(/^- /, '')}</li> : null)
+            <p style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+              {resultado.resumenCronologico}
+            </p>
+
+            {/* NUEVO: Línea de Tiempo Generada Automáticamente */}
+            <h4 style={{ color: '#475569', marginTop: '25px', marginBottom: '10px' }}>Desglose Cronológico:</h4>
+            <ul className="linea-tiempo">
+              {resultado.resumenCronologico
+                .split('.')
+                .map(oracion => oracion.trim())
+                .filter(oracion => oracion.length > 15) // Filtra espacios vacíos o frases muy cortas
+                .map((hito, i) => (
+                  <li key={i} className="linea-tiempo-item">
+                    {hito}.
+                  </li>
+                ))
               }
             </ul>
 

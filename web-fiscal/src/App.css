@@ -122,3 +122,60 @@ body {
   cursor: pointer;
   margin-top: 3px;
 }
+/* Botón Exportar a Word */
+.boton-exportar {
+  background-color: #10b981; /* Verde esmeralda */
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.3s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.boton-exportar:hover {
+  background-color: #059669;
+}
+
+/* Línea de Tiempo Interactiva */
+.linea-tiempo {
+  border-left: 3px solid #cbd5e1;
+  margin: 20px 0 20px 20px;
+  padding-left: 25px;
+  list-style: none;
+}
+
+.linea-tiempo-item {
+  position: relative;
+  margin-bottom: 15px;
+  padding: 15px 20px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+  transition: transform 0.2s;
+}
+
+.linea-tiempo-item:hover {
+  transform: translateX(5px);
+  border-color: #94a3b8;
+}
+
+/* El "punto" de la línea de tiempo */
+.linea-tiempo-item::before {
+  content: '';
+  position: absolute;
+  left: -35px; /* Centrado en la línea gris */
+  top: 20px;
+  width: 14px;
+  height: 14px;
+  background-color: #3b82f6;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #cbd5e1;
+}
