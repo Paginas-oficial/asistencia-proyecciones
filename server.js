@@ -50,12 +50,14 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       fs.unlinkSync(file.path);
   
       // Devolvemos el "Ticket" de Google Gemini al frontend
+      // Devolvemos el "Ticket" de Google Gemini al frontend
       res.json({
         mensaje: "Tomo almacenado",
         ticket: {
           fileUri: uploadResult.file.uri,
           mimeType: uploadResult.file.mimeType,
-          nombre: file.originalname
+          nombre: file.originalname,
+          googleName: uploadResult.file.name // <-- NUEVO: Guardamos el ID interno para poder borrarlo después
         }
       });
     } catch (error) {
@@ -77,7 +79,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       }
   
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash", // <-- El modelo oficial y liberado para tu API Key
+        model: "gemini-1.5-flash", // <-- CORREGIDO: Usamos el modelo estable actual
         generationConfig: { responseMimeType: "application/json" }
       });
   
@@ -123,6 +125,24 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
     // =========================================================
     
     const text = result.response.text();
+    
+    // =========================================================
+    // NUEVO: LIMPIEZA DE CONFIDENCIALIDAD EN LA NUBE DE GOOGLE
+    // =========================================================
+    console.log("[Servidor] Borrando expedientes de los servidores de Google por confidencialidad...");
+    for (const ticket of tickets) {
+      if (ticket.googleName) {
+        try {
+          await fileManager.deleteFile(ticket.googleName);
+          console.log(` - Borrado exitoso: ${ticket.nombre}`);
+        } catch (errorBorrado) {
+          console.error(` - Fallo al borrar ${ticket.nombre} en la nube:`, errorBorrado.message);
+        }
+      }
+    }
+    console.log("[Servidor] Limpieza de seguridad completada.");
+    // =========================================================
+
     res.json(JSON.parse(text));
 
   } catch (error) {

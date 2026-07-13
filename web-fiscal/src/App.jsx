@@ -80,8 +80,9 @@ function App() {
       return '<li>No hay datos</li>';
     };
 
-    const elementosHTML = formatearLista(resultado.elementosDeConviccion || resultado.elementosConviccion);
-    const diligenciasHTML = formatearLista(resultado.diligenciasFaltantes || resultado.elementosFaltantes);
+    // CORREGIDO: Usando los nombres exactos que envía la IA desde el servidor
+    const elementosHTML = formatearLista(resultado.elementosConviccionEncontrados);
+    const diligenciasHTML = formatearLista(resultado.elementosFaltantes);
 
     // Plantilla HTML que Word entiende perfectamente
     const contenidoHTML = `
