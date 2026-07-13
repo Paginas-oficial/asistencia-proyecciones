@@ -76,7 +76,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       }
   
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro", // <-- Cambiado al modelo premium para textos legales largos
+        model: "gemini-1.5-pro-latest", // <-- El cambio está aquí
         generationConfig: { responseMimeType: "application/json" }
       });
   
