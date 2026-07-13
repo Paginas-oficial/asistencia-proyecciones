@@ -1,15 +1,18 @@
 /* Estilos Globales */
-body {
-  font-family: 'Inter', system-ui, sans-serif;
-  background-color: #f1f5f9;
+/* Forzamos a que todo el fondo sea de color claro y ocupe el 100% */
+html, body, #root {
   margin: 0;
+  padding: 0;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #f1f5f9;
 }
 
 .contenedor-principal {
   display: flex;
   min-height: 100vh;
-  width: 100vw;
-  overflow-x: hidden; /* Esto elimina la barra gris gigante de abajo */
+  width: 100%; /* Cambiamos vw por % para evitar scrollbars fantasma */
+  overflow-x: hidden; 
 }
 
 /* Sidebar (Oscuro y Profesional) */

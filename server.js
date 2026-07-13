@@ -16,7 +16,7 @@ app.use(express.json());
 // PUNTO 3: Configuración de Multer ampliada a 150MB para soportar tomos grandes escaneados
 const upload = multer({ 
     dest: 'uploads/',
-    limits: { fileSize: 150 * 1024 * 1024 } 
+    limits: { fileSize: 200 * 1024 * 1024 } 
 });
 
 // Inicialización de los servicios de Google Gemini
