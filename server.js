@@ -77,11 +77,13 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
   
-      // CORRECCIÓN 1: Eliminamos generationConfig. Esto estaba causando el Error 400 al chocar con los PDFs.
+      // Usamos el modelo que descubriste en tu terminal y habilitamos el modo JSON
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash" 
+        model: "gemini-2.5-flash",
+        generationConfig: { responseMimeType: "application/json" }
       });
   
+      // EL PROMPT CORREGIDO: Eliminamos la prohibición de comillas dobles que causaba el Error 400
       const systemPrompt = `
         Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
 Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
@@ -97,15 +99,14 @@ Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE est
   "sustentoJuridico": "Explicación legal dogmática y jurisprudencial"
 }
 
-REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
-1. CITACIÓN EXACTA: Cada dato fáctico, indicio, conclusión o argumento DEBE incluir obligatoriamente el tomo y la página.
-2. FORMATO SEGURO: Usa solo comillas simples (') dentro de los textos.
-3. INICIO Y FIN: Tu respuesta debe empezar con la llave { y terminar con }, sin usar formatos Markdown.
+REGLAS DE ORO:
+1. CITACIÓN EXACTA: Cada dato fáctico, indicio, conclusión o argumento DEBE incluir obligatoriamente el tomo y la página. Ejemplo: '...desbalance patrimonial (Tomo 2, Pág. 34)'. Si no es visible, usa '(Pág. No especificada)'.
+2. FORMATO: Escapa correctamente cualquier comilla dentro de tus textos para mantener la integridad estructural del JSON.
 `;
   
-    // =========================================================
-    // SEGURO INTELIGENTE (No tocar)
-    // =========================================================
+    const contenidoPrompt = [ systemPrompt ];
+
+    // TU CÓDIGO EXCELENTE PARA ESPERAR LOS ARCHIVOS PESADOS (Seguro Inteligente)
     console.log("[Servidor] Verificando estado de los PDFs en la nube de Google...");
     for (const ticket of tickets) {
       if (ticket.googleName) {
@@ -125,39 +126,27 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
           }
         }
       }
-    }
-
-    console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
-
-    // CORRECCIÓN 2: Construcción blindada de la matriz para que Google no rechace el Argumento.
-    const contenidoPrompt = [];
-    contenidoPrompt.push({ text: systemPrompt }); // Se pasa como objeto estructurado, no como texto suelto.
-
-    for (const ticket of tickets) {
-      if (!ticket.fileUri) throw new Error("Falta la URI del archivo.");
+      
+      // Empaquetamos el archivo correctamente
       contenidoPrompt.push({
-        fileData: { 
-          fileUri: String(ticket.fileUri), 
-          mimeType: "application/pdf" // Forzado absoluto a PDF
-        }
+        fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
       });
     }
 
+    console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
+    
+    // Ejecutamos la IA
     const result = await model.generateContent(contenidoPrompt);
-    let text = result.response.text();
+    const text = result.response.text();
 
-    // CORRECCIÓN 3: Limpiamos manualmente cualquier basura Markdown que la IA añada para evitar que el JSON se rompa
-    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
-
-    // BORRADO POR CONFIDENCIALIDAD
-    console.log("[Servidor] Borrando expedientes de los servidores de Google por confidencialidad...");
+    // Limpieza de confidencialidad
+    console.log("[Servidor] Borrando expedientes de la nube de Google...");
     for (const ticket of tickets) {
       if (ticket.googleName) {
         try {
           await fileManager.deleteFile(ticket.googleName);
-          console.log(` - Borrado exitoso: ${ticket.nombre}`);
         } catch (errorBorrado) {
-          console.error(` - Fallo al borrar ${ticket.nombre}:`, errorBorrado.message);
+          console.error(`Fallo al borrar ${ticket.nombre}:`, errorBorrado.message);
         }
       }
     }
