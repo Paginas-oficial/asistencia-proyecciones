@@ -1,4 +1,3 @@
- // Para borrar el archivo temporal y no llenar tu servidor
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -10,82 +9,67 @@ require('dotenv').config();
 const app = express();
 const puerto = 3000;
 
-// Middlewares obligatorios
 app.use(cors());
 app.use(express.json());
 
-// PUNTO 3: Configuración de Multer ampliada a 150MB para soportar tomos grandes escaneados
+// Soportar hasta 150MB por archivo
 const upload = multer({ 
     dest: 'uploads/',
     limits: { fileSize: 150 * 1024 * 1024 } 
 });
 
-// Inicialización de los servicios de Google Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
-// Asegurar que la carpeta 'uploads' exista localmente
 if (!fs.existsSync('uploads')){
     fs.mkdirSync('uploads');
 }
 
-// Cambiamos upload.single por upload.array permitiendo hasta 20 tomos simultáneos
 // =================================================================
-// RUTA 1: EL ACUMULADOR (Sube un tomo a la vez y devuelve un Ticket)
+// RUTA 1: SUBIDA FORZANDO EL FORMATO PDF
 // =================================================================
 app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
     try {
       const file = req.file;
       if (!file) return res.status(400).json({ error: "No se recibió el tomo" });
   
-      console.log(`-> Subiendo a Gemini: ${file.originalname} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
+      console.log(`-> Subiendo a Gemini: ${file.originalname}`);
       
-      // Subimos a la nube de Google
+      // VITAL: Ignoramos al navegador y le decimos a Google que es 100% un PDF
       const uploadResult = await fileManager.uploadFile(file.path, {
-        mimeType: "application/pdf",
+        mimeType: "application/pdf", 
         displayName: file.originalname,
       });
   
-      // Borramos el PDF del servidor de Render para liberar espacio inmediatamente
-      fs.unlinkSync(file.path);
+      fs.unlinkSync(file.path); // Borrar local
   
-      // Devolvemos el "Ticket" de Google Gemini al frontend
-      // Devolvemos el "Ticket" de Google Gemini al frontend
       res.json({
         mensaje: "Tomo almacenado",
         ticket: {
           fileUri: uploadResult.file.uri,
-          mimeType: uploadResult.file.mimeType,
+          mimeType: "application/pdf", // Guardamos el formato forzado
           nombre: file.originalname,
-          googleName: uploadResult.file.name // <-- NUEVO: Guardamos el ID interno para poder borrarlo después
+          googleName: uploadResult.file.name 
         }
       });
     } catch (error) {
       console.error("Error al subir el tomo:", error);
       res.status(500).json({ error: "Fallo al subir el archivo." });
     }
-  });
+});
   
- // =================================================================
-  // RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
-  // =================================================================
-  app.post('/api/analizar-tickets', async (req, res) => {
+// =================================================================
+// RUTA 2: ANÁLISIS CRUZADO (Arquitectura Oficial Gemini 2.5)
+// =================================================================
+app.post('/api/analizar-tickets', async (req, res) => {
     try {
       const { tickets } = req.body; 
-      
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
-  
-      // Usamos el modelo que descubriste en tu terminal y habilitamos el modo JSON
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: { responseMimeType: "application/json" }
-      });
-  
-      // EL PROMPT CORREGIDO: Eliminamos la prohibición de comillas dobles que causaba el Error 400
-      const systemPrompt = `
-        Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
+
+      // Instrucciones Maestras
+      const systemPrompt = `Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
 Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
 
 Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE esta estructura:
@@ -100,18 +84,25 @@ Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE est
 }
 
 REGLAS DE ORO:
-1. CITACIÓN EXACTA: Cada dato fáctico, indicio, conclusión o argumento DEBE incluir obligatoriamente el tomo y la página. Ejemplo: '...desbalance patrimonial (Tomo 2, Pág. 34)'. Si no es visible, usa '(Pág. No especificada)'.
-2. FORMATO: Escapa correctamente cualquier comilla dentro de tus textos para mantener la integridad estructural del JSON.
-`;
+1. CITACIÓN EXACTA: Cada dato fáctico o indicio DEBE incluir obligatoriamente el tomo y la página.
+2. FORMATO: Tu respuesta debe ser un JSON puro, sin bloques de código Markdown.`;
   
-    const contenidoPrompt = [ systemPrompt ];
+      // VITAL: Ahora las instrucciones van dentro de la configuración del modelo, como exige la versión moderna
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        systemInstruction: systemPrompt,
+        generationConfig: { responseMimeType: "application/json" }
+      });
+  
+      console.log("[Servidor] Verificando estado de los PDFs en la nube de Google...");
+      const matrizArchivos = [];
 
-    // TU CÓDIGO EXCELENTE PARA ESPERAR LOS ARCHIVOS PESADOS (Seguro Inteligente)
-    console.log("[Servidor] Verificando estado de los PDFs en la nube de Google...");
-    for (const ticket of tickets) {
-      if (ticket.googleName) {
+      for (const ticket of tickets) {
+        if (!ticket.googleName) throw new Error("Falta el ID del archivo.");
+
         let archivoListo = false;
         let intentos = 0;
+        
         while (!archivoListo && intentos < 20) { 
           const fileInfo = await fileManager.getFile(ticket.googleName);
           if (fileInfo.state === "ACTIVE") {
@@ -125,41 +116,39 @@ REGLAS DE ORO:
             intentos++;
           }
         }
+
+        // VITAL: La matriz ahora SOLO contiene archivos, evitando que el modelo confunda texto con PDFs
+        matrizArchivos.push({
+          fileData: { 
+            fileUri: ticket.fileUri, 
+            mimeType: "application/pdf" 
+          }
+        });
       }
+
+      console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
       
-      // Empaquetamos el archivo correctamente
-      contenidoPrompt.push({
-        fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
-      });
-    }
+      const result = await model.generateContent(matrizArchivos);
+      const text = result.response.text();
 
-    console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
-    
-    // Ejecutamos la IA
-    const result = await model.generateContent(contenidoPrompt);
-    const text = result.response.text();
-
-    // Limpieza de confidencialidad
-    console.log("[Servidor] Borrando expedientes de la nube de Google...");
-    for (const ticket of tickets) {
-      if (ticket.googleName) {
+      console.log("[Servidor] Borrando expedientes de los servidores de Google por confidencialidad...");
+      for (const ticket of tickets) {
         try {
           await fileManager.deleteFile(ticket.googleName);
+          console.log(` - Borrado exitoso: ${ticket.nombre}`);
         } catch (errorBorrado) {
-          console.error(`Fallo al borrar ${ticket.nombre}:`, errorBorrado.message);
+          console.error(` - Fallo al borrar ${ticket.nombre}:`, errorBorrado.message);
         }
       }
+
+      res.json(JSON.parse(text));
+
+    } catch (error) {
+      console.error("Error en el análisis cruzado:", error);
+      res.status(500).json({ error: "Fallo al procesar el caso completo." });
     }
-
-    res.json(JSON.parse(text));
-
-  } catch (error) {
-    console.error("Error en el análisis cruzado:", error);
-    res.status(500).json({ error: "Fallo al procesar el caso completo." });
-  }
 });
 
-// PUNTO 3: Configurar el servidor para escuchar y extender el timeout a 10 minutos
 const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
     console.log(`Servidor Fiscal Optimizado en http://localhost:${puerto}`);
@@ -167,4 +156,4 @@ const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
 });
 
-servidorConfigurado.timeout = 10 * 60 * 1000; // 10 minutos de tiempo de espera máximo
+servidorConfigurado.timeout = 10 * 60 * 1000;
