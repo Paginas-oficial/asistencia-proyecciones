@@ -69,8 +69,9 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       }
 
       // 1. Configuramos el modelo de manera limpia
+      // 1. Configuramos el modelo de manera limpia
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash"
+        model: "gemini-2.5-pro" // <-- CAMBIAMOS DE 'flash' A 'pro' PARA ARCHIVOS MASIVOS
       });
   
       // 2. El Prompt Maestro exacto que funcionaba en tu prueba local
