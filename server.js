@@ -79,7 +79,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       }
   
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", // <-- CORREGIDO: Usamos el modelo estable actual
+        model: "gemini-2.5-flash", // <-- Regresamos a tu modelo correcto y potente
         generationConfig: { responseMimeType: "application/json" }
       });
   
@@ -107,23 +107,39 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
   
       // Preparamos la matriz combinando el prompt con todos los tickets
       // 2. Preparamos la matriz combinando el prompt con todos los tickets
-    const contenidoPrompt = [systemPrompt];
-    for (const ticket of tickets) {
-      contenidoPrompt.push({
-        fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
-      });
-    }
+      const contenidoPrompt = [systemPrompt];
+      for (const ticket of tickets) {
+        contenidoPrompt.push({
+          fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
+        });
+      }
 
     // =========================================================
     // AQUÍ ES DONDE DEBE IR EL SEGURO DE TIEMPO (DENTRO DE LA RUTA)
     // =========================================================
-    console.log("[Servidor] Dando 15 segundos a Google para procesar los PDFs...");
-    await new Promise(resolve => setTimeout(resolve, 15000)); 
-
-    console.log("[Servidor] Iniciando lectura cruzada de tomos...");
-    const result = await model.generateContent(contenidoPrompt);
+    console.log("[Servidor] Verificando estado de los PDFs en la nube de Google...");
+    for (const ticket of tickets) {
+      if (ticket.googleName) {
+        let archivoListo = false;
+        while (!archivoListo) {
+          // Le preguntamos a Google directamente cómo va la lectura del PDF
+          const fileInfo = await fileManager.getFile(ticket.googleName);
+          if (fileInfo.state === "ACTIVE") {
+            console.log(` - ✅ ${ticket.nombre} procesado y listo.`);
+            archivoListo = true;
+          } else if (fileInfo.state === "FAILED") {
+            throw new Error(`Google falló al leer el PDF: ${ticket.nombre}`);
+          } else {
+            console.log(` - ⏳ ${ticket.nombre} procesándose en Google... esperando 5s.`);
+            await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos y vuelve a preguntar
+          }
+        }
+      }
+    }
+    console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
     // =========================================================
-    
+
+    const result = await model.generateContent(contenidoPrompt);
     const text = result.response.text();
     
     // =========================================================
