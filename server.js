@@ -77,10 +77,9 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
-  
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", // <-- Este es el modelo oficial y real
-        generationConfig: { responseMimeType: "application/json" }
+        model: "gemini-1.5-flash" 
+        // ELIMINADA LA LÍNEA DE generationConfig PARA EVITAR EL ERROR 400
       });
   
       // PEGA AQUÍ TU PROMPT MAESTRO EXACTAMENTE COMO LO TENÍAS
@@ -108,11 +107,14 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
       // Preparamos la matriz combinando el prompt con todos los tickets
       // 2. Preparamos la matriz combinando el prompt con todos los tickets
       const contenidoPrompt = [systemPrompt];
-      for (const ticket of tickets) {
-        contenidoPrompt.push({
-          fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
-        });
-      }
+    for (const ticket of tickets) {
+      // NUEVO: Validación estricta para evitar el Error 400
+      if (!ticket.fileUri) throw new Error("Un tomo perdió su ruta de conexión.");
+      
+      contenidoPrompt.push({
+        fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
+      });
+    }
 
     // =========================================================
     // AQUÍ ES DONDE DEBE IR EL SEGURO DE TIEMPO (DENTRO DE LA RUTA)
