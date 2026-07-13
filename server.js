@@ -42,7 +42,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       
       // Subimos a la nube de Google
       const uploadResult = await fileManager.uploadFile(file.path, {
-        mimeType: file.mimetype,
+        mimeType: "application/pdf",
         displayName: file.originalname,
       });
   
@@ -106,13 +106,18 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
   
       // Preparamos la matriz combinando el prompt con todos los tickets
       // 2. Preparamos la matriz combinando el prompt con todos los tickets
-      const contenidoPrompt = [systemPrompt];
+      // 2. Preparamos la matriz combinando el prompt con todos los tickets
+    const contenidoPrompt = [
+      systemPrompt,
+      "Por favor, analiza estos tomos adjuntos y genera la estructura JSON solicitada." // <-- CORRECCIÓN 2: Frase de acción obligatoria
+    ];
+    
     for (const ticket of tickets) {
-      // NUEVO: Validación estricta para evitar el Error 400
-      if (!ticket.fileUri) throw new Error("Un tomo perdió su ruta de conexión.");
-      
       contenidoPrompt.push({
-        fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
+        fileData: { 
+          fileUri: ticket.fileUri, 
+          mimeType: "application/pdf" // <-- CORRECCIÓN 3: Evita que el modelo rechace el argumento
+        }
       });
     }
 
