@@ -66,23 +66,22 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
     }
   });
   
-  // =================================================================
+ // =================================================================
   // RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
   // =================================================================
-  // Le damos 15 segundos a Google para procesar los PDFs pesados
   app.post('/api/analizar-tickets', async (req, res) => {
     try {
-      const { tickets } = req.body; // Recibimos la lista de tickets que nos manda la web
+      const { tickets } = req.body; 
       
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
+  
+      // CORRECCIÓN 1: Eliminamos generationConfig. Esto estaba causando el Error 400 al chocar con los PDFs.
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash", // <-- El modelo moderno que tu llave SÍ tiene
-        generationConfig: { responseMimeType: "application/json" }
+        model: "gemini-2.5-flash" 
       });
   
-      // PEGA AQUÍ TU PROMPT MAESTRO EXACTAMENTE COMO LO TENÍAS
       const systemPrompt = `
         Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
 Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
@@ -99,37 +98,20 @@ Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE est
 }
 
 REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
-1. CITACIÓN EXACTA: Cada dato fáctico, indicio, conclusión o argumento DEBE incluir obligatoriamente el tomo y la página. Ejemplo: '...desbalance patrimonial (Tomo 2, Pág. 34)'. Si no es visible, usa '(Pág. No especificada)'.
-2. FORMATO SEGURO: Queda TERMINANTEMENTE PROHIBIDO usar comillas dobles (") dentro de los textos de tus respuestas. Usa solo comillas simples (').
-3. TEXTO PLANO CONTINUO: Queda ESTRICTAMENTE PROHIBIDO usar saltos de línea (Enters) o formato Markdown dentro de tus respuestas.
+1. CITACIÓN EXACTA: Cada dato fáctico, indicio, conclusión o argumento DEBE incluir obligatoriamente el tomo y la página.
+2. FORMATO SEGURO: Usa solo comillas simples (') dentro de los textos.
+3. INICIO Y FIN: Tu respuesta debe empezar con la llave { y terminar con }, sin usar formatos Markdown.
 `;
   
-      // Preparamos la matriz combinando el prompt con todos los tickets
-      // 2. Preparamos la matriz combinando el prompt con todos los tickets
-      // 2. Preparamos la matriz combinando el prompt con todos los tickets
-    const contenidoPrompt = [
-      systemPrompt,
-      "Por favor, analiza estos tomos adjuntos y genera la estructura JSON solicitada." // <-- CORRECCIÓN 2: Frase de acción obligatoria
-    ];
-    
-    for (const ticket of tickets) {
-      contenidoPrompt.push({
-        fileData: { 
-          fileUri: ticket.fileUri, 
-          mimeType: "application/pdf" // <-- CORRECCIÓN 3: Evita que el modelo rechace el argumento
-        }
-      });
-    }
-
     // =========================================================
-    // AQUÍ ES DONDE DEBE IR EL SEGURO DE TIEMPO (DENTRO DE LA RUTA)
+    // SEGURO INTELIGENTE (No tocar)
     // =========================================================
     console.log("[Servidor] Verificando estado de los PDFs en la nube de Google...");
     for (const ticket of tickets) {
       if (ticket.googleName) {
         let archivoListo = false;
-        while (!archivoListo) {
-          // Le preguntamos a Google directamente cómo va la lectura del PDF
+        let intentos = 0;
+        while (!archivoListo && intentos < 20) { 
           const fileInfo = await fileManager.getFile(ticket.googleName);
           if (fileInfo.state === "ACTIVE") {
             console.log(` - ✅ ${ticket.nombre} procesado y listo.`);
@@ -137,21 +119,37 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
           } else if (fileInfo.state === "FAILED") {
             throw new Error(`Google falló al leer el PDF: ${ticket.nombre}`);
           } else {
-            console.log(` - ⏳ ${ticket.nombre} procesándose en Google... esperando 5s.`);
-            await new Promise(r => setTimeout(r, 5000)); // Espera 5 segundos y vuelve a preguntar
+            console.log(` - ⏳ ${ticket.nombre} procesándose... esperando 5s.`);
+            await new Promise(r => setTimeout(r, 5000));
+            intentos++;
           }
         }
       }
     }
+
     console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
-    // =========================================================
+
+    // CORRECCIÓN 2: Construcción blindada de la matriz para que Google no rechace el Argumento.
+    const contenidoPrompt = [];
+    contenidoPrompt.push({ text: systemPrompt }); // Se pasa como objeto estructurado, no como texto suelto.
+
+    for (const ticket of tickets) {
+      if (!ticket.fileUri) throw new Error("Falta la URI del archivo.");
+      contenidoPrompt.push({
+        fileData: { 
+          fileUri: String(ticket.fileUri), 
+          mimeType: "application/pdf" // Forzado absoluto a PDF
+        }
+      });
+    }
 
     const result = await model.generateContent(contenidoPrompt);
-    const text = result.response.text();
-    
-    // =========================================================
-    // NUEVO: LIMPIEZA DE CONFIDENCIALIDAD EN LA NUBE DE GOOGLE
-    // =========================================================
+    let text = result.response.text();
+
+    // CORRECCIÓN 3: Limpiamos manualmente cualquier basura Markdown que la IA añada para evitar que el JSON se rompa
+    text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+
+    // BORRADO POR CONFIDENCIALIDAD
     console.log("[Servidor] Borrando expedientes de los servidores de Google por confidencialidad...");
     for (const ticket of tickets) {
       if (ticket.googleName) {
@@ -159,12 +157,10 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
           await fileManager.deleteFile(ticket.googleName);
           console.log(` - Borrado exitoso: ${ticket.nombre}`);
         } catch (errorBorrado) {
-          console.error(` - Fallo al borrar ${ticket.nombre} en la nube:`, errorBorrado.message);
+          console.error(` - Fallo al borrar ${ticket.nombre}:`, errorBorrado.message);
         }
       }
     }
-    console.log("[Servidor] Limpieza de seguridad completada.");
-    // =========================================================
 
     res.json(JSON.parse(text));
 
