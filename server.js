@@ -59,16 +59,21 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
 });
   
 // =================================================================
-// RUTA 2: ANÁLISIS CRUZADO (Arquitectura Oficial Gemini 2.5)
-// =================================================================
-app.post('/api/analizar-tickets', async (req, res) => {
+  // RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
+  // =================================================================
+  app.post('/api/analizar-tickets', async (req, res) => {
     try {
       const { tickets } = req.body; 
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
 
-      // Instrucciones Maestras
+      // 1. Configuramos el modelo de manera limpia
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash"
+      });
+  
+      // 2. El Prompt Maestro exacto que funcionaba en tu prueba local
       const systemPrompt = `Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
 Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
 
@@ -85,24 +90,13 @@ Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE est
 
 REGLAS DE ORO:
 1. CITACIÓN EXACTA: Cada dato fáctico o indicio DEBE incluir obligatoriamente el tomo y la página.
-2. FORMATO: Tu respuesta debe ser un JSON puro, sin bloques de código Markdown.`;
-  
-      // VITAL: Ahora las instrucciones van dentro de la configuración del modelo, como exige la versión moderna
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        systemInstruction: systemPrompt,
-        generationConfig: { responseMimeType: "application/json" }
-      });
-  
-      console.log("[Servidor] Verificando estado de los PDFs en la nube de Google...");
-      const matrizArchivos = [];
+2. FORMATO: Tu respuesta debe ser un JSON puro, usa solo comillas simples (') dentro de los textos.`;
 
+      console.log("[Servidor] Verificando estado de los PDFs en la nube...");
       for (const ticket of tickets) {
         if (!ticket.googleName) throw new Error("Falta el ID del archivo.");
-
         let archivoListo = false;
         let intentos = 0;
-        
         while (!archivoListo && intentos < 20) { 
           const fileInfo = await fileManager.getFile(ticket.googleName);
           if (fileInfo.state === "ACTIVE") {
@@ -116,9 +110,13 @@ REGLAS DE ORO:
             intentos++;
           }
         }
+      }
 
-        // VITAL: La matriz ahora SOLO contiene archivos, evitando que el modelo confunda texto con PDFs
-        matrizArchivos.push({
+      // 3. EL GRAN FIX: Colocamos el TEXTO y los ARCHIVOS en LA MISMA matriz obligatoriamente
+      const partes = [ systemPrompt ]; 
+
+      for (const ticket of tickets) {
+        partes.push({
           fileData: { 
             fileUri: ticket.fileUri, 
             mimeType: "application/pdf" 
@@ -128,16 +126,19 @@ REGLAS DE ORO:
 
       console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
       
-      const result = await model.generateContent(matrizArchivos);
-      const text = result.response.text();
+      // Ahora la IA recibe las instrucciones claras + los archivos, evitando el Error 400
+      const result = await model.generateContent(partes);
+      let text = result.response.text();
 
-      console.log("[Servidor] Borrando expedientes de los servidores de Google por confidencialidad...");
+      // 4. Limpiamos manualmente posibles residuos de código que rompan el JSON
+      text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+
+      console.log("[Servidor] Borrando expedientes de los servidores de Google...");
       for (const ticket of tickets) {
         try {
           await fileManager.deleteFile(ticket.googleName);
-          console.log(` - Borrado exitoso: ${ticket.nombre}`);
         } catch (errorBorrado) {
-          console.error(` - Fallo al borrar ${ticket.nombre}:`, errorBorrado.message);
+          console.error(` - Fallo al borrar:`, errorBorrado.message);
         }
       }
 
