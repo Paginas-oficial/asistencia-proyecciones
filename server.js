@@ -1,7 +1,7 @@
+const fs = require('fs'); // Para borrar el archivo temporal y no llenar tu servidor
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
-const fs = require('fs');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
 require('dotenv').config();
@@ -16,7 +16,7 @@ app.use(express.json());
 // PUNTO 3: Configuración de Multer ampliada a 150MB para soportar tomos grandes escaneados
 const upload = multer({ 
     dest: 'uploads/',
-    limits: { fileSize: 200 * 1024 * 1024 } 
+    limits: { fileSize: 150 * 1024 * 1024 } 
 });
 
 // Inicialización de los servicios de Google Gemini
@@ -29,34 +29,59 @@ if (!fs.existsSync('uploads')){
 }
 
 // Cambiamos upload.single por upload.array permitiendo hasta 20 tomos simultáneos
-app.post('/api/analizar-caso', upload.array('documentosPdf', 20), async (req, res) => {
-    // Verificamos el array de archivos (req.files en plural)
-    if (!req.files || req.files.length === 0) {
-        return res.status(400).json({ error: 'No se recibieron tomos del expediente.' });
-    }
-
-    console.log(`\n[Servidor] Procesando ${req.files.length} tomos recibidos...`);
-    
-    const archivosSubidosGemini = []; // Aquí guardaremos las referencias en la nube
-
+// =================================================================
+// RUTA 1: EL ACUMULADOR (Sube un tomo a la vez y devuelve un Ticket)
+// =================================================================
+app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
     try {
-        // 1. Bucle para subir cada tomo a la API de Gemini uno por uno
-        for (const file of req.files) {
-            console.log(`   -> Subiendo a la IA: ${file.originalname} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
-            const uploadResult = await fileManager.uploadFile(file.path, {
-                mimeType: file.mimetype,
-                displayName: file.originalname,
-            });
-            archivosSubidosGemini.push(uploadResult);
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No se recibió el tomo" });
+  
+      console.log(`-> Subiendo a Gemini: ${file.originalname} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`);
+      
+      // Subimos a la nube de Google
+      const uploadResult = await fileManager.uploadFile(file.path, {
+        mimeType: file.mimetype,
+        displayName: file.originalname,
+      });
+  
+      // Borramos el PDF del servidor de Render para liberar espacio inmediatamente
+      fs.unlinkSync(file.path);
+  
+      // Devolvemos el "Ticket" de Google Gemini al frontend
+      res.json({
+        mensaje: "Tomo almacenado",
+        ticket: {
+          fileUri: uploadResult.file.uri,
+          mimeType: uploadResult.file.mimeType,
+          nombre: file.originalname
         }
-
-        const model = genAI.getGenerativeModel({ 
-            model: "gemini-2.5-flash", 
-            generationConfig: { responseMimeType: "application/json" } 
-        });
-
-        const systemPrompt = `
-Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
+      });
+    } catch (error) {
+      console.error("Error al subir el tomo:", error);
+      res.status(500).json({ error: "Fallo al subir el archivo." });
+    }
+  });
+  
+  // =================================================================
+  // RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
+  // =================================================================
+  app.post('/api/analizar-tickets', async (req, res) => {
+    try {
+      const { tickets } = req.body; // Recibimos la lista de tickets que nos manda la web
+      
+      if (!tickets || tickets.length === 0) {
+          return res.status(400).json({ error: "No hay tomos para analizar" });
+      }
+  
+      const model = genAI.getGenerativeModel({
+        model: "gemini-1.5-flash",
+        generationConfig: { responseMimeType: "application/json" }
+      });
+  
+      // PEGA AQUÍ TU PROMPT MAESTRO EXACTAMENTE COMO LO TENÍAS
+      const systemPrompt = `
+        Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
 Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
 
 Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE esta estructura:
@@ -75,51 +100,26 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
 2. FORMATO SEGURO: Queda TERMINANTEMENTE PROHIBIDO usar comillas dobles (") dentro de los textos de tus respuestas. Usa solo comillas simples (').
 3. TEXTO PLANO CONTINUO: Queda ESTRICTAMENTE PROHIBIDO usar saltos de línea (Enters) o formato Markdown dentro de tus respuestas.
 `;
-
-        // 2. Preparamos la matriz de contenido: El prompt + TODOS los tomos
-        const contenidoPrompt = [systemPrompt];
-        for (const archivoNube of archivosSubidosGemini) {
-            contenidoPrompt.push({
-                fileData: { fileUri: archivoNube.file.uri, mimeType: archivoNube.file.mimeType }
-            });
-        }
-
-        console.log('[Servidor] Iniciando lectura y cruce de información entre tomos (Generando JSON)...');
-        const result = await model.generateContent(contenidoPrompt);
-
-        let textoJson = result.response.text();
-        textoJson = textoJson.replace(/^```json\n?/, '').replace(/\n?```$/, '').trim();
-        textoJson = textoJson.replace(/[\n\r\t]+/g, ' '); 
-
-        let resultadoEstructurado;
-        try {
-            resultadoEstructurado = JSON.parse(textoJson);
-        } catch (parseError) {
-            console.error('\n[ALERTA] La IA generó un JSON mal formado. Texto crudo:');
-            console.error(textoJson);
-            throw new Error('Formato JSON inválido devuelto por la IA.');
-        }
-
-        // 3. Bucle de limpieza en la nube
-        for (const archivoNube of archivosSubidosGemini) {
-            await fileManager.deleteFile(archivoNube.file.name);
-        }
-        
-        console.log('[Servidor] Análisis completado. Todos los rastros en la nube eliminados.');
-        res.json(resultadoEstructurado);
-
+  
+      // Preparamos la matriz combinando el prompt con todos los tickets
+      const contenidoPrompt = [systemPrompt];
+      for (const ticket of tickets) {
+        contenidoPrompt.push({
+          fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
+        });
+      }
+  
+      console.log(`[Servidor] Iniciando lectura cruzada de ${tickets.length} tomos...`);
+      const result = await model.generateContent(contenidoPrompt);
+      
+      const text = result.response.text();
+      res.json(JSON.parse(text));
+  
     } catch (error) {
-        console.error('\n[Error en Servidor]:', error.message);
-        res.status(500).json({ error: 'Hubo un fallo al analizar los volúmenes del expediente.' });
-    } finally {
-        // 4. Limpieza local obligatoria (pase lo que pase, borramos los PDFs de tu disco duro)
-        if (req.files) {
-            for (const file of req.files) {
-                if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
-            }
-        }
+      console.error("Error en el análisis cruzado:", error);
+      res.status(500).json({ error: "Fallo al procesar el caso completo." });
     }
-});
+  });
 
 // PUNTO 3: Configurar el servidor para escuchar y extender el timeout a 10 minutos
 const servidorConfigurado = app.listen(puerto, () => {
