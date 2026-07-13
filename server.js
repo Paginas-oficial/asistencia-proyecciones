@@ -77,7 +77,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       }
   
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash", // Este es el oficial, ultrarrápido y con cuota gratuita
+        model: "gemini-2.5-flash", // <-- Regresamos a la tecnología actual
         generationConfig: { responseMimeType: "application/json" }
       });
   
