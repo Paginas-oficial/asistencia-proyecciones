@@ -78,8 +78,8 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash" 
-        // ELIMINADA LA LÍNEA DE generationConfig PARA EVITAR EL ERROR 400
+        model: "gemini-2.5-flash", // <-- El modelo moderno que tu llave SÍ tiene
+        generationConfig: { responseMimeType: "application/json" }
       });
   
       // PEGA AQUÍ TU PROMPT MAESTRO EXACTAMENTE COMO LO TENÍAS
