@@ -67,6 +67,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
   // =================================================================
   // RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
   // =================================================================
+  // Le damos 15 segundos a Google para procesar los PDFs pesados
   app.post('/api/analizar-tickets', async (req, res) => {
     try {
       const { tickets } = req.body; // Recibimos la lista de tickets que nos manda la web
@@ -76,7 +77,7 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
       }
   
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash", 
+        model: "gemini-1.5-flash", // Este es el oficial, ultrarrápido y con cuota gratuita
         generationConfig: { responseMimeType: "application/json" }
       });
   
@@ -103,24 +104,32 @@ REGLAS DE ORO DE OBLIGATORIO CUMPLIMIENTO:
 `;
   
       // Preparamos la matriz combinando el prompt con todos los tickets
-      const contenidoPrompt = [systemPrompt];
-      for (const ticket of tickets) {
-        contenidoPrompt.push({
-          fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
-        });
-      }
-  
-      console.log(`[Servidor] Iniciando lectura cruzada de ${tickets.length} tomos...`);
-      const result = await model.generateContent(contenidoPrompt);
-      
-      const text = result.response.text();
-      res.json(JSON.parse(text));
-  
-    } catch (error) {
-      console.error("Error en el análisis cruzado:", error);
-      res.status(500).json({ error: "Fallo al procesar el caso completo." });
+      // 2. Preparamos la matriz combinando el prompt con todos los tickets
+    const contenidoPrompt = [systemPrompt];
+    for (const ticket of tickets) {
+      contenidoPrompt.push({
+        fileData: { fileUri: ticket.fileUri, mimeType: ticket.mimeType }
+      });
     }
-  });
+
+    // =========================================================
+    // AQUÍ ES DONDE DEBE IR EL SEGURO DE TIEMPO (DENTRO DE LA RUTA)
+    // =========================================================
+    console.log("[Servidor] Dando 15 segundos a Google para procesar los PDFs...");
+    await new Promise(resolve => setTimeout(resolve, 15000)); 
+
+    console.log("[Servidor] Iniciando lectura cruzada de tomos...");
+    const result = await model.generateContent(contenidoPrompt);
+    // =========================================================
+    
+    const text = result.response.text();
+    res.json(JSON.parse(text));
+
+  } catch (error) {
+    console.error("Error en el análisis cruzado:", error);
+    res.status(500).json({ error: "Fallo al procesar el caso completo." });
+  }
+});
 
 // PUNTO 3: Configurar el servidor para escuchar y extender el timeout a 10 minutos
 const servidorConfigurado = app.listen(puerto, () => {
