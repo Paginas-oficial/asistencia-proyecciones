@@ -53,36 +53,48 @@ const ExtractorOCR = () => {
   };
 
   // Función mágica para exportar todos los fragmentos juntos a Word
+  // Función mágica para exportar todos los fragmentos juntos a Word (VERSIÓN LIMPIA)
   const exportarTodoAWord = () => {
     if (borradorAcumulado.length === 0) return;
 
-    // Creamos la estructura de un documento Word en HTML
+    // Estilos base para que Word lo lea como un documento formal
     let contenidoHtml = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>Transcripciones</title></head>
-      <body style="font-family: Arial, sans-serif;">
-        <h2 style="text-align: center; color: #2c3e50;">Documento de Transcripciones (OCR)</h2>
-        <hr>
+      <body style="font-family: 'Arial', sans-serif; font-size: 11pt;">
+        <h2 style="text-align: center; color: #000000;">Documento de Transcripciones (OCR)</h2>
+        <br>
     `;
 
-    // Recorremos cada fragmento y lo unimos al documento
     borradorAcumulado.forEach((item, index) => {
-      // Usamos replace(/\n/g, '<br>') para respetar los párrafos de la IA
+      // 1. EL FILTRO DE LIMPIEZA ABSOLUTA
+      let textoLimpio = item.texto
+        // a) Convertimos saltos de línea dobles (párrafos reales) en etiquetas HTML de párrafo
+        .replace(/\n{2,}/g, '</p><p style="text-align: justify; margin-bottom: 12px; line-height: 1.5;">')
+        // b) Eliminamos los saltos de línea simples (que cortan oraciones a la mitad) y los volvemos espacios
+        .replace(/\n/g, ' ')
+        // c) Eliminamos espacios en blanco gigantes (más de 2 espacios seguidos)
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+
+      // 2. Lo inyectamos en el documento HTML
       contenidoHtml += `
-        <h4 style="color: #2980b9;">Fragmento ${index + 1} (${item.orden}):</h4>
-        <p style="white-space: pre-wrap; font-size: 14px; text-align: justify;">${item.texto.replace(/\n/g, '<br>')}</p>
-        <br><hr><br>
+        <h4 style="color: #333333; border-bottom: 1px solid #ccc; padding-bottom: 5px;">Fragmento ${index + 1} (${item.orden}):</h4>
+        <p style="text-align: justify; margin-bottom: 12px; line-height: 1.5;">
+          ${textoLimpio}
+        </p>
+        <br>
       `;
     });
 
     contenidoHtml += `</body></html>`;
 
-    // Truco para forzar la descarga como .doc respetando las tildes y ñ (UTF-8)
+    // Truco para descargar el .doc
     const blob = new Blob(['\ufeff', contenidoHtml], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `Transcripciones_${new Date().getTime()}.doc`;
+    link.download = `Transcripciones_Fiscales_${new Date().getTime()}.doc`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
