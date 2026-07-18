@@ -2,23 +2,23 @@ import React, { useState } from 'react';
 
 const ExtractorOCR = () => {
   const [archivo, setArchivo] = useState(null);
-  const [instruccion, setInstruccion] = useState("Transcribe la página 1");
-  const [resultado, setResultado] = useState("");
+  const [instruccion, setInstruccion] = useState("");
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState("");
-  const [copiado, setCopiado] = useState(false);
+  
+  // NUEVO: Aquí guardaremos todos los fragmentos que vayamos extrayendo
+  const [borradorAcumulado, setBorradorAcumulado] = useState([]);
 
-  // Tu URL exacta de Render para esta nueva ruta
+  // URL de tu backend
   const BACKEND_URL = "https://api-fiscal-backend.onrender.com/api/transcribir-fojas";
 
   const manejarEnvio = async (e) => {
     e.preventDefault();
     if (!archivo) return alert("Por favor, sube un documento.");
+    if (!instruccion) return alert("Por favor, escribe una instrucción.");
 
     setCargando(true);
     setError("");
-    setResultado("");
-    setCopiado(false);
 
     const formData = new FormData();
     formData.append("documento", archivo);
@@ -36,7 +36,15 @@ const ExtractorOCR = () => {
         throw new Error(data.error || "Error al procesar el archivo");
       }
 
-      setResultado(data.texto);
+      // Agregamos el nuevo texto a la lista acumulada
+      setBorradorAcumulado(prev => [...prev, { 
+        orden: instruccion, 
+        texto: data.texto 
+      }]);
+      
+      // Limpiamos la caja de texto para que Débora pida la siguiente foja
+      setInstruccion(""); 
+
     } catch (err) {
       setError(err.message);
     } finally {
@@ -44,26 +52,61 @@ const ExtractorOCR = () => {
     }
   };
 
-  const copiarAlPortapapeles = () => {
-    navigator.clipboard.writeText(resultado);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 3000);
+  // Función mágica para exportar todos los fragmentos juntos a Word
+  const exportarTodoAWord = () => {
+    if (borradorAcumulado.length === 0) return;
+
+    // Creamos la estructura de un documento Word en HTML
+    let contenidoHtml = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Transcripciones</title></head>
+      <body style="font-family: Arial, sans-serif;">
+        <h2 style="text-align: center; color: #2c3e50;">Documento de Transcripciones (OCR)</h2>
+        <hr>
+    `;
+
+    // Recorremos cada fragmento y lo unimos al documento
+    borradorAcumulado.forEach((item, index) => {
+      // Usamos replace(/\n/g, '<br>') para respetar los párrafos de la IA
+      contenidoHtml += `
+        <h4 style="color: #2980b9;">Fragmento ${index + 1} (${item.orden}):</h4>
+        <p style="white-space: pre-wrap; font-size: 14px; text-align: justify;">${item.texto.replace(/\n/g, '<br>')}</p>
+        <br><hr><br>
+      `;
+    });
+
+    contenidoHtml += `</body></html>`;
+
+    // Truco para forzar la descarga como .doc respetando las tildes y ñ (UTF-8)
+    const blob = new Blob(['\ufeff', contenidoHtml], { type: 'application/msword' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Transcripciones_${new Date().getTime()}.doc`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const limpiarBorrador = () => {
+    if (window.confirm("¿Estás seguro de borrar todo el trabajo acumulado?")) {
+      setBorradorAcumulado([]);
+    }
   };
 
   return (
     <div style={{ maxWidth: '800px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif', backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#2c3e50', borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>
-        📄 Transcripción Literal (OCR con IA)
+        📄 Extractor OCR (Acumulativo)
       </h2>
       <p style={{ color: '#7f8c8d' }}>
-        Sube un PDF o imagen y dale una orden específica a la IA. <br/>
-        <i>Ejemplo: "Transcribe de fojas 12 a 15" o "Transcribe el folio 25".</i>
+        Sube el PDF, pide los fragmentos que necesites uno por uno, y expórtalos todos juntos a Word al final.
       </p>
 
+      {/* ZONA DE CONTROL (Formulario) */}
       <form onSubmit={manejarEnvio} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '20px' }}>
         
-        {/* Caja para subir el archivo */}
-        <div style={{ border: '2px dashed #bdc3c7', padding: '20px', textAlign: 'center', borderRadius: '8px', backgroundColor: '#f8f9fa' }}>
+        <div style={{ border: '2px dashed #bdc3c7', padding: '15px', textAlign: 'center', borderRadius: '8px', backgroundColor: '#f8f9fa' }}>
           <input 
             type="file" 
             accept=".pdf, image/*" 
@@ -72,20 +115,17 @@ const ExtractorOCR = () => {
           />
         </div>
 
-        {/* Caja para escribir la instrucción */}
         <div>
-          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#34495e' }}>Instrucción exacta:</label>
+          <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '5px', color: '#34495e' }}>Siguiente instrucción:</label>
           <input 
             type="text" 
             value={instruccion} 
             onChange={(e) => setInstruccion(e.target.value)} 
-            placeholder='Ej: Transcribe la página 5'
+            placeholder='Ej: Transcribe de fojas 61 a 80'
             style={{ width: '95%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', fontSize: '16px' }}
-            required
           />
         </div>
 
-        {/* Botón de Procesar */}
         <button 
           type="submit" 
           disabled={cargando}
@@ -94,31 +134,50 @@ const ExtractorOCR = () => {
             color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', fontSize: '16px', cursor: cargando ? 'wait' : 'pointer' 
           }}
         >
-          {cargando ? "⏳ Transcribiendo... (Esto puede tomar hasta 20 segundos)" : "Procesar Transcripción"}
+          {cargando ? "⏳ Transcribiendo y Acumulando..." : "Extraer y Añadir al Borrador"}
         </button>
       </form>
 
-      {/* Alerta de Error */}
       {error && <div style={{ color: '#e74c3c', backgroundColor: '#fadbd8', padding: '10px', borderRadius: '5px', fontWeight: 'bold' }}>Error: {error}</div>}
 
-      {/* Caja de Resultado (Se muestra solo cuando la IA termina) */}
-      {resultado && (
-        <div style={{ marginTop: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <h3 style={{ margin: 0, color: '#27ae60' }}>✅ Transcripción Exitosa:</h3>
-            <button 
-              onClick={copiarAlPortapapeles}
-              style={{ padding: '8px 15px', backgroundColor: copiado ? '#27ae60' : '#34495e', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
-            >
-              {copiado ? "¡Copiado al portapapeles!" : "📋 Copiar Texto"}
-            </button>
+      {/* ZONA DE ACUMULACIÓN (Resultados) */}
+      {borradorAcumulado.length > 0 && (
+        <div style={{ marginTop: '30px', borderTop: '2px dashed #bdc3c7', paddingTop: '20px' }}>
+          
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
+            <h3 style={{ margin: 0, color: '#27ae60' }}>
+              📚 Fragmentos en memoria: {borradorAcumulado.length}
+            </h3>
+            
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button 
+                onClick={limpiarBorrador}
+                style={{ padding: '10px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                🗑️ Limpiar
+              </button>
+              
+              <button 
+                onClick={exportarTodoAWord}
+                style={{ padding: '10px 15px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                💾 Exportar TODO a Word
+              </button>
+            </div>
           </div>
           
-          <textarea 
-            readOnly 
-            value={resultado}
-            style={{ width: '95%', height: '300px', padding: '15px', borderRadius: '8px', border: '1px solid #bdc3c7', backgroundColor: '#f9f9f9', fontFamily: 'monospace', fontSize: '15px', resize: 'vertical' }}
-          />
+          {/* Mostramos los fragmentos apilados */}
+          <div style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: '10px' }}>
+            {borradorAcumulado.map((item, index) => (
+              <div key={index} style={{ marginBottom: '20px', backgroundColor: '#f1f5f9', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #3498db' }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#34495e' }}>Fragmento {index + 1}: <span style={{color: '#7f8c8d'}}>{item.orden}</span></h4>
+                <div style={{ fontFamily: 'monospace', fontSize: '14px', whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', backgroundColor: 'white', padding: '10px', border: '1px solid #e2e8f0' }}>
+                  {item.texto}
+                </div>
+              </div>
+            ))}
+          </div>
+
         </div>
       )}
     </div>
