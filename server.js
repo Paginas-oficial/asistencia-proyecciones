@@ -4,11 +4,12 @@ const multer = require('multer');
 const fs = require('fs');
 const { GoogleGenerativeAI } = require('@google/generative-ai');              
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
-const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
+
 require('dotenv').config();
 
 const app = express();
-const puerto = 3000;
+// Pequeña mejora para Render: usar el puerto que ellos asignen o el 3000
+const puerto = process.env.PORT || 3000; 
 
 app.use(cors());
 app.use(express.json());
@@ -19,6 +20,7 @@ const upload = multer({
     limits: { fileSize: 150 * 1024 * 1024 } 
 });
 
+// Inicializamos a Google UNA SOLA VEZ
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
@@ -60,16 +62,15 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
 });
   
 // =================================================================
-  // RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
-  // =================================================================
-  app.post('/api/analizar-tickets', async (req, res) => {
+// RUTA 2: EL ANALIZADOR (Cruza la información usando los Tickets)
+// =================================================================
+app.post('/api/analizar-tickets', async (req, res) => {
     try {
       const { tickets } = req.body; 
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
 
-      // 1. Configuramos el modelo de manera limpia
       // 1. Configuramos el modelo de manera limpia
       const model = genAI.getGenerativeModel({
         model: "gemini-2.5-flash"
@@ -151,6 +152,7 @@ REGLAS DE ORO:
       res.status(500).json({ error: "Fallo al procesar el caso completo." });
     }
 });
+
 // =================================================================
 // RUTA 3: EXTRACTOR LITERAL (El Digitalizador OCR del Usuario)
 // =================================================================
@@ -240,6 +242,10 @@ Reglas Estrictas de Transcripción:
       res.status(500).json({ error: "Fallo al transcribir el documento." });
   }
 });
+
+// =================================================================
+// INICIO DEL SERVIDOR
+// =================================================================
 const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
     console.log(`Servidor Fiscal Optimizado en http://localhost:${puerto}`);
@@ -247,4 +253,5 @@ const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
 });
 
+// Aumentamos el tiempo de espera por si los PDFs son gigantes
 servidorConfigurado.timeout = 10 * 60 * 1000;
