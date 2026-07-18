@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import './App.css'
-
+import ExtractorOCR from './ExtractorOCR';
 function App() {
   const [tickets, setTickets] = useState([]); // Aquí guardaremos los tickets de los tomos subidos
   const [cargando, setCargando] = useState(false);
@@ -172,7 +172,7 @@ function App() {
           >
             {cargando && mensajeEstado.includes('Analizando') ? '🧠 Analizando Caso...' : '⚖️ Analizar Caso Completo'}
           </button>
-
+          
           {/* Botón para Limpiar */}
           {tickets.length > 0 && (
              <button onClick={limpiarCarrito} disabled={cargando} style={{
@@ -209,7 +209,7 @@ function App() {
               </div>
             </div>
 
-            {/* Lógica del Veredicto Automático (Mantenlo igual) */}
+            {/* Lógica del Veredicto Automático */}
             <div className={`banner-veredicto ${
               String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
               String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
@@ -223,15 +223,14 @@ function App() {
             
             <h3>Resumen Fáctico</h3>
             
-            {/* Este es el párrafo del resumen que se había borrado */}
+            {/* Párrafo del resumen */}
             <p style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.7' }}>
               {resultado.resumenCronologico}
             </p>
 
-            {/* Y esta es la Línea de Tiempo Horizontal */}
+            {/* Línea de Tiempo Horizontal */}
             <h4 style={{ color: '#475569', marginTop: '35px', marginBottom: '0px' }}>Línea de Tiempo del Caso:</h4>
             
-            {/* Aquí agregamos el cajón contenedor */}
             <div className="cajon-scroll-horizontal">
               <ul className="linea-tiempo">
                 {resultado.resumenCronologico
@@ -285,6 +284,14 @@ function App() {
             <p>Sube los tomos del expediente y obtén una proyección estructurada.</p>
           </div>
         )}
+
+        {/* ======================================================== */}
+        {/* AQUÍ VA LA NUEVA HERRAMIENTA DE EXTRACCIÓN (OCR)         */}
+        {/* ======================================================== */}
+        <div style={{ marginTop: '40px' }}>
+          <ExtractorOCR />
+        </div>
+
       </main>
     </div>
   )

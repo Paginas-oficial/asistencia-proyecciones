@@ -150,7 +150,95 @@ REGLAS DE ORO:
       res.status(500).json({ error: "Fallo al procesar el caso completo." });
     }
 });
+// =================================================================
+// RUTA 3: EXTRACTOR LITERAL (El Digitalizador OCR del Usuario)
+// =================================================================
+app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) => {
+  try {
+      const file = req.file;
+      const { instruccion } = req.body; 
 
+      if (!file || !instruccion) {
+          return res.status(400).json({ error: "Faltan datos (archivo o instrucción)" });
+      }
+
+      console.log(`-> [OCR] Iniciando Transcripción para: ${file.originalname}`);
+      console.log(`-> [OCR] Orden: "${instruccion}"`);
+
+      // 1. Subir el archivo al gestor de Google
+      const uploadResult = await fileManager.uploadFile(file.path, {
+          mimeType: file.mimetype, // Permite PDFs o Imágenes sueltas
+          displayName: file.originalname,
+      });
+
+      fs.unlinkSync(file.path); // Borrar el archivo temporal del servidor
+
+      // 2. Tu Prompt Maestro de Ingeniería
+      const systemPrompt = `Rol: Actúa como un Asistente de Digitalización y Transcripción Documental. Tu única función es procesar los archivos PDF o imágenes escaneadas que te proporciono y convertirlos en texto plano con precisión absoluta.
+Objetivo Principal: Transcribir exacta y literalmente el contenido de los documentos según mis instrucciones específicas, entregando un texto limpio, sin formato, listo para ser copiado y pegado en Microsoft Word.
+
+Instrucciones de Interacción (Cómo Entender mis Pedidos):
+- Si digo: "Transcribe el [NOMBRE DEL DOCUMENTO]". Tu Acción: Transcribes el documento completo.
+- Si digo: "Transcribe la página [NÚMERO]". Tu Acción: Transcribes todo el texto de esa página, según el contador de páginas del visor de PDF.
+- Si digo: "Transcribe el folio [NÚMERO]" o "Transcribe de fojas [X] a [Y]". Tu Acción: Buscas el número de folio impreso o sellado en la página y transcribes el texto de esa(s) página(s) específica(s).
+
+Reglas Estrictas de Transcripción:
+1. Salida Exclusiva de Texto: Tu respuesta debe contener única y exclusivamente la transcripción solicitada. No incluyas saludos, confirmaciones, ni despedidas. Solo el texto.
+2. Transcripción Literal (Verbatim): Transcribe el texto exactamente como aparece, incluyendo mayúsculas, minúsculas, puntuación, acentos y errores ortográficos del original.
+3. Manejo de Texto Ilegible: Si una palabra o sección es absolutamente ilegible, inserta la etiqueta: [texto ilegible].
+4. Manejo de Texto Manuscrito: Si encuentras texto manuscrito (notas, firmas), intenta transcribirlo. Si es ilegible, inserta: [manuscrito ilegible].
+5. Formato Limpio para Word:
+ - Sin Formato: Elimina negritas, cursivas, tamaños de letra.
+ - Párrafos: Conserva los saltos de párrafo.
+ - Columnas: Transcribe la columna izquierda completa primero, y luego la derecha.
+ - Ignorar Ruido: Ignora encabezados, pies de página y elementos gráficos.
+ - Tablas: Transcribe el contenido celda por celda, fila por fila. Usa un punto y coma (;) para separar celdas.`;
+
+      // Configuramos el modelo sin forzar JSON, porque queremos Texto Puro
+      const model = genAI.getGenerativeModel({
+          model: "gemini-2.5-flash",
+          systemInstruction: systemPrompt
+      });
+
+      // 3. Seguro de Procesamiento (Esperar a Google)
+      let archivoListo = false;
+      let intentos = 0;
+      while (!archivoListo && intentos < 20) {
+          const fileInfo = await fileManager.getFile(uploadResult.file.name);
+          if (fileInfo.state === "ACTIVE") {
+              archivoListo = true;
+          } else if (fileInfo.state === "FAILED") {
+              throw new Error("Fallo al procesar el archivo en Google.");
+          } else {
+              await new Promise(r => setTimeout(r, 5000));
+              intentos++;
+          }
+      }
+
+      // 4. Ejecutamos la orden enviando el Archivo + La Instrucción del Usuario
+      const result = await model.generateContent([
+          { fileData: { fileUri: uploadResult.file.uri, mimeType: uploadResult.file.mimeType } },
+          { text: instruccion }
+      ]);
+
+      const textoExtraido = result.response.text();
+
+      // 5. Borrado de Confidencialidad
+      try {
+          await fileManager.deleteFile(uploadResult.file.name);
+          console.log(`-> [OCR] Borrado exitoso y transcripción terminada.`);
+      } catch (e) {
+          console.error("Error borrando archivo:", e);
+      }
+
+      // Devolvemos el texto limpio al Frontend
+      res.json({ texto: textoExtraido });
+
+  } catch (error) {
+      console.error("Error en transcripción OCR:", error);
+      res.status(500).json({ error: "Fallo al transcribir el documento." });
+  }
+});
 const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
     console.log(`Servidor Fiscal Optimizado en http://localhost:${puerto}`);
