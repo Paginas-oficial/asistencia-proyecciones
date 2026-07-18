@@ -2,8 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');              
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
+const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 require('dotenv').config();
 
 const app = express();
