@@ -1,41 +1,52 @@
 import React, { useState } from 'react';
+import html2pdf from 'html2pdf.js'; // El nuevo motor de PDF
 
 const ExtractorOCR = () => {
-  const [archivo, setArchivo] = useState(null);
+  // 1. Estados para MÚLTIPLES archivos
+  const [archivos, setArchivos] = useState([]);
+  const [archivoActivo, setArchivoActivo] = useState(null); // El tomo que estamos configurando
   
-  // Tareas manuales y Cola
+  // 2. La Súper Cola (ahora guarda el Archivo + La Instrucción)
   const [instruccionActual, setInstruccionActual] = useState("");
   const [colaTareas, setColaTareas] = useState([]);
   const [borradorAcumulado, setBorradorAcumulado] = useState([]);
   
-  // Estados para el Generador Automático
   const [totalPaginas, setTotalPaginas] = useState("");
-  const [divisiones, setDivisiones] = useState("10"); // Por defecto 10, como pediste
+  const [divisiones, setDivisiones] = useState("10");
 
-  // Estados de control
   const [procesando, setProcesando] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState("");
   const [error, setError] = useState("");
 
   const BACKEND_URL = "https://api-fiscal-backend.onrender.com/api/transcribir-fojas";
 
-  // 1. Agregar tarea manual
+  // Capturar múltiples archivos
+  const manejarSubida = (e) => {
+    const files = Array.from(e.target.files);
+    setArchivos(files);
+    if (files.length > 0) {
+      setArchivoActivo(files[0]); // Seleccionamos el primero por defecto
+    }
+  };
+
+  // Agregar tarea manual a la Súper Cola
   const agregarALaCola = (e) => {
     e.preventDefault();
+    if (!archivoActivo) return alert("Selecciona un tomo primero.");
     if (!instruccionActual.trim()) return;
-    setColaTareas([...colaTareas, instruccionActual]);
+    
+    setColaTareas([...colaTareas, { archivo: archivoActivo, instruccion: instruccionActual }]);
     setInstruccionActual(""); 
   };
 
-  // 2. EL NUEVO GENERADOR AUTOMÁTICO DE TAREAS
+  // Generador Automático (ahora amarrado al tomo seleccionado)
   const generarLotesAutomaticos = (e) => {
     e.preventDefault();
+    if (!archivoActivo) return alert("Selecciona un tomo primero.");
     const total = parseInt(totalPaginas);
     const div = parseInt(divisiones);
 
-    if (isNaN(total) || total <= 0) {
-      return alert("Por favor, ingresa un número válido para el total de páginas.");
-    }
+    if (isNaN(total) || total <= 0) return alert("Ingresa un número válido para las páginas.");
 
     const paginasPorFragmento = Math.ceil(total / div);
     const nuevasTareas = [];
@@ -44,39 +55,38 @@ const ExtractorOCR = () => {
       const inicio = (i * paginasPorFragmento) + 1;
       const fin = Math.min((i + 1) * paginasPorFragmento, total);
       
-      // Solo agregamos si el inicio no supera el total (por si sobran divisiones)
       if (inicio <= total) {
-        nuevasTareas.push(`Transcribe la página ${inicio} a ${fin}`);
+        nuevasTareas.push({
+          archivo: archivoActivo,
+          instruccion: `Transcribe la página ${inicio} a ${fin}`
+        });
       }
     }
 
-    // Añadimos las tareas generadas a la cola actual
     setColaTareas([...colaTareas, ...nuevasTareas]);
-    setTotalPaginas(""); // Limpiamos el input
-    alert(`Se agregaron ${nuevasTareas.length} instrucciones a la cola automáticamente.`);
+    setTotalPaginas(""); 
+    alert(`Se agregaron ${nuevasTareas.length} tareas para el archivo: ${archivoActivo.name}`);
   };
 
-  // 3. Eliminar tarea de la cola
   const quitarDeLaCola = (index) => {
     const nuevaCola = colaTareas.filter((_, i) => i !== index);
     setColaTareas(nuevaCola);
   };
 
-  // 4. Ejecutar la Cola (Intacto)
+  // 3. EL MOTOR DE LA SÚPER COLA
   const ejecutarColaAutomatica = async () => {
-    if (!archivo) return alert("Por favor, sube un documento primero.");
-    if (colaTareas.length === 0) return alert("Agrega al menos una instrucción a la cola.");
+    if (colaTareas.length === 0) return alert("La cola está vacía.");
 
     setProcesando(true);
     setError("");
 
     for (let i = 0; i < colaTareas.length; i++) {
-      const ordenActual = colaTareas[i];
-      setMensajeEstado(`⏳ Procesando tarea ${i + 1} de ${colaTareas.length}: "${ordenActual}"...`);
+      const tarea = colaTareas[i];
+      setMensajeEstado(`⏳ Procesando Tarea ${i + 1}/${colaTareas.length} | Archivo: ${tarea.archivo.name} | Orden: "${tarea.instruccion}"...`);
 
       const formData = new FormData();
-      formData.append("documento", archivo);
-      formData.append("instruccion", ordenActual);
+      formData.append("documento", tarea.archivo);
+      formData.append("instruccion", tarea.instruccion);
 
       try {
         const response = await fetch(BACKEND_URL, {
@@ -91,17 +101,18 @@ const ExtractorOCR = () => {
         }
 
         setBorradorAcumulado(prev => [...prev, { 
-          orden: ordenActual, 
+          archivoNombre: tarea.archivo.name,
+          orden: tarea.instruccion, 
           texto: data.texto 
         }]);
 
         if (i < colaTareas.length - 1) {
-          setMensajeEstado(`⏸️ Pausa de seguridad antes de la siguiente tarea...`);
+          setMensajeEstado(`⏸️ Pausa de seguridad antes del siguiente bloque...`);
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
 
       } catch (err) {
-        setError(`Error en la tarea "${ordenActual}": ${err.message}. El proceso automático se detuvo.`);
+        setError(`Error en "${tarea.instruccion}" (${tarea.archivo.name}): ${err.message}. Proceso detenido.`);
         setProcesando(false);
         setMensajeEstado("");
         setColaTareas(colaTareas.slice(i)); 
@@ -109,50 +120,63 @@ const ExtractorOCR = () => {
       }
     }
 
-    setMensajeEstado("✅ ¡Todas las tareas de la cola fueron procesadas con éxito!");
+    setMensajeEstado("✅ ¡Todas las tareas de todos los tomos fueron procesadas!");
     setColaTareas([]); 
     setProcesando(false);
     setTimeout(() => setMensajeEstado(""), 5000);
   };
 
-  // 5. Exportador a Word (Intacto, con el filtro mágico)
-  const exportarTodoAWord = () => {
+  // 4. EL NUEVO EXPORTADOR A PDF
+  const exportarTodoAPDF = () => {
     if (borradorAcumulado.length === 0) return;
 
-    let contenidoHtml = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head><meta charset='utf-8'><title>Transcripciones</title></head>
-      <body style="font-family: 'Arial', sans-serif; font-size: 11pt;">
-        <h2 style="text-align: center; color: #000000;">Documento de Transcripciones (OCR)</h2>
-        <br>
+    // Creamos un contenedor HTML virtual en la memoria
+    const elementoContenedor = document.createElement('div');
+    elementoContenedor.style.padding = '20px';
+    elementoContenedor.style.fontFamily = 'Arial, sans-serif';
+    elementoContenedor.style.fontSize = '12pt'; // Tamaño de letra formal
+    elementoContenedor.style.lineHeight = '1.5';
+
+    let htmlContent = `
+      <h2 style="text-align: center; color: #000; margin-bottom: 20px;">
+        Documento de Transcripciones Oficiales (OCR)
+      </h2>
+      <hr style="margin-bottom: 20px;">
     `;
 
     borradorAcumulado.forEach((item, index) => {
+      // El mismo filtro mágico de limpieza
       let textoLimpio = item.texto
-        .replace(/\n{2,}/g, '</p><p style="text-align: justify; margin-bottom: 12px; line-height: 1.5;">')
+        .replace(/\n{2,}/g, '</p><p style="text-align: justify; margin-bottom: 12px;">')
         .replace(/\n/g, ' ')
         .replace(/\s{2,}/g, ' ')
         .trim();
 
-      contenidoHtml += `
-        <h4 style="color: #333333; border-bottom: 1px solid #ccc; padding-bottom: 5px;">Fragmento ${index + 1} (${item.orden}):</h4>
-        <p style="text-align: justify; margin-bottom: 12px; line-height: 1.5;">
-          ${textoLimpio}
-        </p>
-        <br>
+      htmlContent += `
+        <div style="margin-bottom: 30px; page-break-inside: avoid;">
+          <h4 style="color: #333; border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 15px;">
+            Extracto ${index + 1} | Documento: <i>${item.archivoNombre}</i> | Ref: <i>${item.orden}</i>
+          </h4>
+          <p style="text-align: justify; margin-bottom: 12px;">
+            ${textoLimpio}
+          </p>
+        </div>
       `;
     });
 
-    contenidoHtml += `</body></html>`;
+    elementoContenedor.innerHTML = htmlContent;
 
-    const blob = new Blob(['\ufeff', contenidoHtml], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `Transcripciones_Fiscales_${new Date().getTime()}.doc`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    // Configuramos cómo queremos el PDF
+    const opcionesPDF = {
+      margin:       15, // Márgenes en milímetros
+      filename:     `Transcripciones_Fiscalia_${new Date().getTime()}.pdf`,
+      image:        { type: 'jpeg', quality: 0.98 },
+      html2canvas:  { scale: 2 }, // Escala para que el texto salga nítido
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' } // Formato A4
+    };
+
+    // La librería hace la magia y fuerza la descarga
+    html2pdf().set(opcionesPDF).from(elementoContenedor).save();
   };
 
   const limpiarBorrador = () => {
@@ -164,70 +188,80 @@ const ExtractorOCR = () => {
   return (
     <div style={{ maxWidth: '800px', margin: '40px auto', padding: '20px', fontFamily: 'sans-serif', backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 8px rgba(0,0,0,0.1)' }}>
       <h2 style={{ color: '#2c3e50', borderBottom: '2px solid #3498db', paddingBottom: '10px' }}>
-        ⚙️ Extractor OCR (Modo Automático)
+        ⚙️ Extractor OCR (Multi-Tomo a PDF)
       </h2>
 
-      {/* 1. ZONA DE SUBIDA */}
+      {/* 1. ZONA DE SUBIDA (Ahora con el atributo 'multiple') */}
       <div style={{ border: '2px dashed #bdc3c7', padding: '15px', textAlign: 'center', borderRadius: '8px', backgroundColor: '#f8f9fa', marginBottom: '20px' }}>
         <input 
           type="file" 
           accept=".pdf, image/*" 
-          onChange={(e) => setArchivo(e.target.files[0])} 
+          multiple 
+          onChange={manejarSubida} 
           disabled={procesando}
         />
+        <p style={{ fontSize: '13px', color: '#7f8c8d', margin: '5px 0 0 0' }}>Puedes seleccionar varios tomos a la vez (manteniendo presionada la tecla Ctrl).</p>
       </div>
 
-      {/* ============================================================== */}
-      {/* 2. NUEVO: GENERADOR AUTOMÁTICO EN ACORDEÓN */}
-      {/* ============================================================== */}
-      <details style={{ marginBottom: '20px', backgroundColor: '#e8f4f8', borderRadius: '8px', padding: '10px', border: '1px solid #bde0eb' }}>
-        <summary style={{ fontWeight: 'bold', color: '#2980b9', cursor: 'pointer', outline: 'none', padding: '5px' }}>
-          🚀 Creador Rápido de Instrucciones (División Automática)
+      {/* SELECTOR DE TOMO ACTIVO */}
+      {archivos.length > 0 && (
+        <div style={{ marginBottom: '20px', padding: '15px', backgroundColor: '#e8f4f8', borderRadius: '8px', border: '1px solid #bde0eb' }}>
+          <label style={{ fontWeight: 'bold', color: '#2980b9', display: 'block', marginBottom: '8px' }}>
+            📁 ¿Para qué tomo quieres programar las instrucciones?
+          </label>
+          <select 
+            onChange={(e) => setArchivoActivo(archivos[e.target.value])}
+            style={{ width: '100%', padding: '10px', borderRadius: '5px', border: '1px solid #ccc', fontSize: '15px' }}
+            disabled={procesando}
+          >
+            {archivos.map((file, index) => (
+              <option key={index} value={index}>{file.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* 2. GENERADOR AUTOMÁTICO EN ACORDEÓN */}
+      <details style={{ marginBottom: '20px', backgroundColor: '#f9f9f9', borderRadius: '8px', padding: '10px', border: '1px solid #ddd' }}>
+        <summary style={{ fontWeight: 'bold', color: '#2c3e50', cursor: 'pointer', outline: 'none', padding: '5px' }}>
+          🚀 Creador Rápido de Tareas (División Automática)
         </summary>
         <form onSubmit={generarLotesAutomaticos} style={{ display: 'flex', gap: '15px', marginTop: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          
           <div style={{ flex: 1, minWidth: '150px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#34495e', marginBottom: '5px' }}>Total de páginas del PDF:</label>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#34495e', marginBottom: '5px' }}>Total de páginas del tomo:</label>
             <input 
               type="number" 
               value={totalPaginas} 
               onChange={(e) => setTotalPaginas(e.target.value)} 
               placeholder="Ej: 100"
               style={{ width: '90%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }}
-              disabled={procesando}
+              disabled={procesando || archivos.length === 0}
             />
           </div>
-
           <div style={{ flex: 1, minWidth: '150px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 'bold', color: '#34495e', marginBottom: '5px' }}>¿En cuántas partes dividir?</label>
             <select 
               value={divisiones} 
               onChange={(e) => setDivisiones(e.target.value)}
-              style={{ width: '95%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc', backgroundColor: 'white' }}
-              disabled={procesando}
+              style={{ width: '95%', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }}
+              disabled={procesando || archivos.length === 0}
             >
-              {/* Opciones de acordeón a partir de 5 hasta 30 */}
               {[5, 10, 11, 12, 13, 14, 15, 20, 25, 30].map(num => (
                 <option key={num} value={num}>{num} partes</option>
               ))}
             </select>
           </div>
-
           <button 
             type="submit" 
-            disabled={procesando || !totalPaginas}
-            style={{ padding: '9px 15px', backgroundColor: '#2980b9', color: 'white', border: 'none', borderRadius: '5px', cursor: (procesando || !totalPaginas) ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+            disabled={procesando || !totalPaginas || archivos.length === 0}
+            style={{ padding: '9px 15px', backgroundColor: '#2980b9', color: 'white', border: 'none', borderRadius: '5px', cursor: (procesando || !totalPaginas || archivos.length===0) ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
           >
             Generar Lista
           </button>
         </form>
-        <p style={{ fontSize: '12px', color: '#7f8c8d', marginTop: '10px', fontStyle: 'italic' }}>
-          Ejemplo: Si pones 100 páginas y 10 partes, se crearán 10 instrucciones de 10 páginas cada una automáticamente.
-        </p>
       </details>
-      {/* ============================================================== */}
 
-      {/* 3. ZONA DE INSTRUCCIÓN MANUAL (Por si quiere algo muy específico) */}
+      {/* 3. INSTRUCCIÓN MANUAL */}
       <form onSubmit={agregarALaCola} style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
         <input 
           type="text" 
@@ -235,25 +269,25 @@ const ExtractorOCR = () => {
           onChange={(e) => setInstruccionActual(e.target.value)} 
           placeholder='Añadir manual. Ej: Transcribe folio 45'
           style={{ flex: 1, padding: '10px', borderRadius: '5px', border: '1px solid #ccc', fontSize: '15px' }}
-          disabled={procesando}
+          disabled={procesando || archivos.length === 0}
         />
         <button 
           type="submit" 
-          disabled={procesando || !instruccionActual.trim()}
-          style={{ padding: '10px 15px', backgroundColor: '#34495e', color: 'white', border: 'none', borderRadius: '5px', cursor: (procesando || !instruccionActual) ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+          disabled={procesando || !instruccionActual.trim() || archivos.length === 0}
+          style={{ padding: '10px 15px', backgroundColor: '#34495e', color: 'white', border: 'none', borderRadius: '5px', cursor: (procesando || !instruccionActual || archivos.length===0) ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
         >
           ➕ Añadir Manual
         </button>
       </form>
 
-      {/* 4. VISOR DE LA COLA */}
+      {/* 4. VISOR DE LA SÚPER COLA */}
       {colaTareas.length > 0 && (
         <div style={{ backgroundColor: '#fff3cd', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #ffc107', marginBottom: '20px' }}>
-          <h4 style={{ margin: '0 0 10px 0', color: '#856404' }}>📋 Tareas en Cola por Ejecutar ({colaTareas.length}):</h4>
+          <h4 style={{ margin: '0 0 10px 0', color: '#856404' }}>📋 Tareas en Cola ({colaTareas.length}):</h4>
           <ul style={{ margin: 0, paddingLeft: '20px', color: '#856404', fontSize: '14px' }}>
             {colaTareas.map((tarea, index) => (
               <li key={index} style={{ marginBottom: '5px', display: 'flex', justifyContent: 'space-between' }}>
-                <span>{index + 1}. {tarea}</span>
+                <span><strong>{tarea.archivo.name}:</strong> {tarea.instruccion}</span>
                 {!procesando && (
                   <button onClick={() => quitarDeLaCola(index)} style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold' }}>✖ Quitar</button>
                 )}
@@ -264,45 +298,36 @@ const ExtractorOCR = () => {
           <button 
             onClick={ejecutarColaAutomatica}
             disabled={procesando}
-            style={{ marginTop: '15px', width: '100%', padding: '12px', backgroundColor: procesando ? '#95a5a6' : '#2980b9', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', fontSize: '16px', cursor: procesando ? 'wait' : 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
+            style={{ marginTop: '15px', width: '100%', padding: '12px', backgroundColor: procesando ? '#95a5a6' : '#2980b9', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', fontSize: '16px', cursor: procesando ? 'wait' : 'pointer' }}
           >
-            {procesando ? "⚙️ Ejecutando Cola..." : "▶️ Iniciar Procesamiento Automático"}
+            {procesando ? "⚙️ Ejecutando Súper Cola..." : "▶️ Iniciar Procesamiento Automático"}
           </button>
         </div>
       )}
 
       {/* MENSAJES DE ESTADO */}
-      {mensajeEstado && (
-        <div style={{ textAlign: 'center', margin: '15px 0', padding: '10px', backgroundColor: '#d4edda', color: '#155724', borderRadius: '5px', fontWeight: 'bold' }}>
-          {mensajeEstado}
-        </div>
-      )}
+      {mensajeEstado && <div style={{ textAlign: 'center', margin: '15px 0', padding: '10px', backgroundColor: '#d4edda', color: '#155724', borderRadius: '5px', fontWeight: 'bold' }}>{mensajeEstado}</div>}
       {error && <div style={{ color: '#e74c3c', backgroundColor: '#fadbd8', padding: '10px', borderRadius: '5px', fontWeight: 'bold', marginBottom: '15px' }}>{error}</div>}
 
-      {/* 5. ZONA DE RESULTADOS (Intacto) */}
+      {/* 5. ZONA DE RESULTADOS Y EXPORTACIÓN A PDF */}
       {borradorAcumulado.length > 0 && (
         <div style={{ marginTop: '30px', borderTop: '2px dashed #bdc3c7', paddingTop: '20px' }}>
-          
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
-            <h3 style={{ margin: 0, color: '#27ae60' }}>
-              📚 Fragmentos Listos: {borradorAcumulado.length}
-            </h3>
-            
+            <h3 style={{ margin: 0, color: '#27ae60' }}>📚 Fragmentos Listos: {borradorAcumulado.length}</h3>
             <div style={{ display: 'flex', gap: '10px' }}>
               <button 
                 onClick={limpiarBorrador}
                 disabled={procesando}
-                style={{ padding: '10px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', cursor: procesando ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: procesando ? 0.5 : 1 }}
+                style={{ padding: '10px 15px', backgroundColor: '#e74c3c', color: 'white', border: 'none', borderRadius: '5px', cursor: procesando ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
               >
                 🗑️ Limpiar TODO
               </button>
-              
               <button 
-                onClick={exportarTodoAWord}
+                onClick={exportarTodoAPDF}
                 disabled={procesando}
-                style={{ padding: '10px 15px', backgroundColor: '#27ae60', color: 'white', border: 'none', borderRadius: '5px', cursor: procesando ? 'not-allowed' : 'pointer', fontWeight: 'bold', opacity: procesando ? 0.5 : 1 }}
+                style={{ padding: '10px 15px', backgroundColor: '#e67e22', color: 'white', border: 'none', borderRadius: '5px', cursor: procesando ? 'not-allowed' : 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' }}
               >
-                💾 Exportar a Word
+                📄 Descargar en PDF
               </button>
             </div>
           </div>
@@ -310,8 +335,10 @@ const ExtractorOCR = () => {
           <div style={{ maxHeight: '400px', overflowY: 'auto', paddingRight: '10px' }}>
             {borradorAcumulado.map((item, index) => (
               <div key={index} style={{ marginBottom: '20px', backgroundColor: '#f1f5f9', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #3498db' }}>
-                <h4 style={{ margin: '0 0 10px 0', color: '#34495e' }}>Extraído: <span style={{color: '#7f8c8d'}}>{item.orden}</span></h4>
-                <div style={{ fontFamily: 'monospace', fontSize: '14px', whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', backgroundColor: 'white', padding: '10px', border: '1px solid #e2e8f0' }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#34495e', fontSize: '15px' }}>
+                  [{item.archivoNombre}] <span style={{color: '#7f8c8d'}}>{item.orden}</span>
+                </h4>
+                <div style={{ fontFamily: 'monospace', fontSize: '13px', whiteSpace: 'pre-wrap', maxHeight: '150px', overflowY: 'auto', backgroundColor: 'white', padding: '10px', border: '1px solid #e2e8f0' }}>
                   {item.texto}
                 </div>
               </div>
