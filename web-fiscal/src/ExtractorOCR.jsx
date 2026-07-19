@@ -108,7 +108,7 @@ const ExtractorOCR = () => {
 
         if (i < colaTareas.length - 1) {
           setMensajeEstado(`⏸️ Pausa de seguridad antes del siguiente bloque...`);
-          await new Promise(resolve => setTimeout(resolve, 3000));
+          await new Promise(resolve => setTimeout(resolve, 20000));
         }
 
       } catch (err) {
