@@ -18,6 +18,7 @@ const ExtractorOCR = () => {
   const [mensajeEstado, setMensajeEstado] = useState("");
   const [error, setError] = useState("");
   const [procesandoCola, setProcesandoCola] = useState(false);
+  const [tareaActual, setTareaActual] = useState(null);
 
   const BACKEND_URL = "https://api-fiscal-backend.onrender.com/api/transcribir-fojas";
 
