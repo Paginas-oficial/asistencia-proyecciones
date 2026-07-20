@@ -73,7 +73,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
 
       // 1. Configuramos el modelo de manera limpia
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash"
+        model: "gemini-1.5-flash"
       });
   
       // 2. El Prompt Maestro exacto que funcionaba en tu prueba local
