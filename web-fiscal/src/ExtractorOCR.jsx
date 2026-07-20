@@ -87,34 +87,36 @@ const ExtractorOCR = () => {
       const tarea = colaTareas[i];
       setTareaActual(tarea.id);
       
-      const archivo = archivos[tarea.archivoIndex];
+      // Ajuste para detectar cómo llamaste a tus variables de página
+      const pagInicio = tarea.inicio || tarea.paginaInicio || tarea.pagInicio;
+      const pagFin = tarea.fin || tarea.paginaFin || tarea.pagFin;
+
       const formData = new FormData();
-      formData.append('documentoPdf', archivo);
-      formData.append('paginaInicio', tarea.inicio);
-      formData.append('paginaFin', tarea.fin);
+      // Asumimos que la variable donde guardas el PDF seleccionado se llama 'archivo'
+      formData.append('documentoPdf', archivo); 
+      formData.append('paginaInicio', pagInicio);
+      formData.append('paginaFin', pagFin);
 
       let exito = false;
       let reintentos = 0;
       const maxReintentos = 3;
 
-      // Bucle de reintentos en caso de que Google nos ponga en espera
       while (!exito && reintentos < maxReintentos) {
         try {
           if (reintentos === 0) {
-            setMensajeEstado(`Transcribiendo foja ${tarea.inicio} a ${tarea.fin} del ${archivo.name}...`);
+            setMensajeEstado(`Transcribiendo foja ${pagInicio} a ${pagFin}...`);
           } else {
-             setMensajeEstado(`Reintentando foja ${tarea.inicio} a ${tarea.fin} (Intento ${reintentos + 1}/3)... esperando que Google libere cupo...`);
-             // Si falló por cuota, esperamos 20 segundos antes de reintentar
+             setMensajeEstado(`Reintentando foja ${pagInicio} a ${pagFin} (Intento ${reintentos + 1}/3)... esperando que Google libere cupo...`);
              await new Promise(resolve => setTimeout(resolve, 20000)); 
           }
 
-          const response = await fetch(`${API_URL}/api/transcribir`, {
+          // Ajuste del enlace: Usamos tu URL de Render directamente
+          const response = await fetch('https://api-fiscal-backend.onrender.com/api/transcribir', {
             method: 'POST',
             body: formData,
           });
 
           if (!response.ok) {
-            // Si el backend dice "Límite Excedido" (429), lanzamos error para forzar el reintento
             if(response.status === 429) {
                 throw new Error("Límite de velocidad de Google alcanzado.");
             }
@@ -127,12 +129,12 @@ const ExtractorOCR = () => {
              const nuevoFragmento = {
                id: Date.now() + Math.random(),
                texto: data.textoLimpio,
-               origen: `${archivo.name} : Transcribe la página ${tarea.inicio} a ${tarea.fin}`
+               origen: `Transcribe la página ${pagInicio} a ${pagFin}`
              };
              
              setFragmentos(prev => [...prev, nuevoFragmento]);
              tareasExitosas.push(tarea.id);
-             exito = true; // ¡Se logró! Salimos del bucle de reintentos.
+             exito = true; 
           } else {
              throw new Error("Respuesta vacía del servidor.");
           }
@@ -141,17 +143,15 @@ const ExtractorOCR = () => {
           console.error("Error en la tarea:", error);
           reintentos++;
           if (reintentos >= maxReintentos) {
-             setMensajeEstado(`Error final en la página ${tarea.inicio} a ${tarea.fin}. Proceso detenido.`);
+             setMensajeEstado(`Error final en la página ${pagInicio} a ${pagFin}. Proceso detenido.`);
              setProcesandoCola(false);
              setTareaActual(null);
-             // Limpiar de la cola solo las tareas que SÍ fueron exitosas
              setColaTareas(prev => prev.filter(t => !tareasExitosas.includes(t.id)));
-             return; // Abortar toda la cola si un bloque falla 3 veces seguidas
+             return; 
           }
         }
       }
 
-      // Si fue exitoso y NO es la última tarea, aplicamos un freno obligatorio
       if (exito && i < colaTareas.length - 1) {
         setMensajeEstado(`✅ Completado. Pausa de seguridad de 30s para respetar los límites de Google...`);
         await new Promise(resolve => setTimeout(resolve, 30000));
