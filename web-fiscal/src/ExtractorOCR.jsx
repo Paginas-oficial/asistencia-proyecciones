@@ -17,6 +17,7 @@ const ExtractorOCR = () => {
   const [procesando, setProcesando] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState("");
   const [error, setError] = useState("");
+  const [procesandoCola, setProcesandoCola] = useState(false);
 
   const BACKEND_URL = "https://api-fiscal-backend.onrender.com/api/transcribir-fojas";
 
@@ -334,6 +335,7 @@ const ExtractorOCR = () => {
           <button 
             onClick={ejecutarColaAutomatica}
             disabled={procesando}
+            disabled={procesandoCola}
             style={{ marginTop: '15px', width: '100%', padding: '12px', backgroundColor: procesando ? '#95a5a6' : '#2980b9', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', fontSize: '16px', cursor: procesando ? 'wait' : 'pointer' }}
           >
             {procesando ? "⚙️ Ejecutando Súper Cola..." : "▶️ Iniciar Procesamiento Automático"}
