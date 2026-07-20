@@ -73,8 +73,9 @@ app.post('/api/analizar-tickets', async (req, res) => {
 
       // 1. Configuramos el modelo de manera limpia
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash"
-      });
+        model: "gemini-1.5-flash-latest",
+        systemInstruction: systemPrompt
+    });
   
       // 2. El Prompt Maestro exacto que funcionaba en tu prueba local
       const systemPrompt = `Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
@@ -199,9 +200,9 @@ Reglas Estrictas de Transcripción:
 
       // Configuramos el modelo sin forzar JSON, porque queremos Texto Puro
       const model = genAI.getGenerativeModel({
-          model: "gemini-1.5-flash",
-          systemInstruction: systemPrompt
-      });
+        model: "gemini-1.5-flash-latest",
+        systemInstruction: systemPrompt
+    });
 
       // 3. Seguro de Procesamiento (Esperar a Google)
       let archivoListo = false;
