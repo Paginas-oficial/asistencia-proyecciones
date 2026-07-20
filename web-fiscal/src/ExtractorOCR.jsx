@@ -85,17 +85,13 @@ const ExtractorOCR = () => {
     
     for (let i = 0; i < colaTareas.length; i++) {
       const tarea = colaTareas[i];
-      setTareaActual(tarea.id);
-      
-      // Ajuste para detectar cómo llamaste a tus variables de página
-      const pagInicio = tarea.inicio || tarea.paginaInicio || tarea.pagInicio;
-      const pagFin = tarea.fin || tarea.paginaFin || tarea.pagFin;
+      setTareaActual(tarea.id); // Esta variable ya la declaraste, así que funcionará perfecto
 
       const formData = new FormData();
-      // Asumimos que la variable donde guardas el PDF seleccionado se llama 'archivo'
-      formData.append('documentoPdf', archivo); 
-      formData.append('paginaInicio', pagInicio);
-      formData.append('paginaFin', pagFin);
+      // CORRECCIÓN 1 y 2: Usamos el nombre que espera el backend ('documento') y la variable correcta ('tarea.archivo')
+      formData.append('documento', tarea.archivo); 
+      // CORRECCIÓN 3: Enviamos la instrucción de texto que ya generaste y que el backend espera
+      formData.append('instruccion', tarea.instruccion);
 
       let exito = false;
       let reintentos = 0;
@@ -104,14 +100,14 @@ const ExtractorOCR = () => {
       while (!exito && reintentos < maxReintentos) {
         try {
           if (reintentos === 0) {
-            setMensajeEstado(`Transcribiendo foja ${pagInicio} a ${pagFin}...`);
+            setMensajeEstado(`Ejecutando: "${tarea.instruccion}" del archivo ${tarea.archivo.name}...`);
           } else {
-             setMensajeEstado(`Reintentando foja ${pagInicio} a ${pagFin} (Intento ${reintentos + 1}/3)... esperando que Google libere cupo...`);
+             setMensajeEstado(`Reintentando: "${tarea.instruccion}" (Intento ${reintentos + 1}/3)... esperando que Google libere cupo...`);
              await new Promise(resolve => setTimeout(resolve, 20000)); 
           }
 
-          // Ajuste del enlace: Usamos tu URL de Render directamente
-          const response = await fetch('https://api-fiscal-backend.onrender.com/api/transcribir', {
+          // CORRECCIÓN 4: Usamos tu constante BACKEND_URL que apunta a /api/transcribir-fojas
+          const response = await fetch(BACKEND_URL, {
             method: 'POST',
             body: formData,
           });
@@ -125,15 +121,21 @@ const ExtractorOCR = () => {
 
           const data = await response.json();
           
-          if (data.textoLimpio) {
+          if (data.texto) { // Ajustado a data.texto que es lo que devuelve el backend
              const nuevoFragmento = {
                id: Date.now() + Math.random(),
-               texto: data.textoLimpio,
-               origen: `Transcribe la página ${pagInicio} a ${pagFin}`
+               texto: data.texto,
+               origen: `[${tarea.archivo.name}] ${tarea.instruccion}` // Para que el borrador salga bonito
              };
              
-             setFragmentos(prev => [...prev, nuevoFragmento]);
-             tareasExitosas.push(tarea.id);
+             // Agregamos al borrador acumulado para que el botón de PDF funcione
+             setBorradorAcumulado(prev => [...prev, {
+                texto: data.texto,
+                archivoNombre: tarea.archivo.name,
+                orden: tarea.instruccion
+             }]);
+
+             tareasExitosas.push(tarea); // Guardamos la tarea completa
              exito = true; 
           } else {
              throw new Error("Respuesta vacía del servidor.");
@@ -143,15 +145,17 @@ const ExtractorOCR = () => {
           console.error("Error en la tarea:", error);
           reintentos++;
           if (reintentos >= maxReintentos) {
-             setMensajeEstado(`Error final en la página ${pagInicio} a ${pagFin}. Proceso detenido.`);
+             setMensajeEstado(`Error final en la orden: "${tarea.instruccion}". Proceso detenido.`);
              setProcesandoCola(false);
              setTareaActual(null);
-             setColaTareas(prev => prev.filter(t => !tareasExitosas.includes(t.id)));
+             // Quitamos de la cola visual solo las tareas que fueron exitosas
+             setColaTareas(prev => prev.filter(t => !tareasExitosas.includes(t)));
              return; 
           }
         }
       }
 
+      // Freno de mano de 30 segundos entre tareas para respetar a Google
       if (exito && i < colaTareas.length - 1) {
         setMensajeEstado(`✅ Completado. Pausa de seguridad de 30s para respetar los límites de Google...`);
         await new Promise(resolve => setTimeout(resolve, 30000));
