@@ -73,7 +73,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
 
       // 1. Configuramos el modelo de manera limpia
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro-001",
+        model: "gemini-1.5-flash",
         systemInstruction: systemPrompt
     });
   
@@ -200,7 +200,7 @@ Reglas Estrictas de Transcripción:
 
       // Configuramos el modelo sin forzar JSON, porque queremos Texto Puro
       const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-pro-001",
+        model: "gemini-1.5-flash",
         systemInstruction: systemPrompt
     });
 
