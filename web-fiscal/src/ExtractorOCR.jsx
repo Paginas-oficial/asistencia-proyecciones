@@ -75,91 +75,55 @@ const ExtractorOCR = () => {
 
   // 3. EL MOTOR DE LA SÚPER COLA
   const ejecutarColaAutomatica = async () => {
-    if (colaTareas.length === 0) return;
-    setProcesandoCola(true);
-    setMensajeEstado(`Iniciando procesamiento automático de ${colaTareas.length} tareas...`);
+    if (colaTareas.length === 0) return alert("La cola está vacía.");
 
-    let tareasExitosas = [];
-    
+    setProcesando(true);
+    setError("");
+
     for (let i = 0; i < colaTareas.length; i++) {
       const tarea = colaTareas[i];
-      setTareaActual(tarea.id);
-      
-      const archivo = archivos[tarea.archivoIndex];
+      setMensajeEstado(`⏳ Procesando Tarea ${i + 1}/${colaTareas.length} | Archivo: ${tarea.archivo.name} | Orden: "${tarea.instruccion}"...`);
+
       const formData = new FormData();
-      formData.append('documentoPdf', archivo);
-      formData.append('paginaInicio', tarea.inicio);
-      formData.append('paginaFin', tarea.fin);
+      formData.append("documento", tarea.archivo);
+      formData.append("instruccion", tarea.instruccion);
 
-      let exito = false;
-      let reintentos = 0;
-      const maxReintentos = 3;
+      try {
+        const response = await fetch(BACKEND_URL, {
+          method: 'POST',
+          body: formData,
+        });
 
-      // Bucle de reintentos en caso de que Google nos ponga en espera
-      while (!exito && reintentos < maxReintentos) {
-        try {
-          if (reintentos === 0) {
-            setMensajeEstado(`Transcribiendo foja ${tarea.inicio} a ${tarea.fin} del ${archivo.name}...`);
-          } else {
-             setMensajeEstado(`Reintentando foja ${tarea.inicio} a ${tarea.fin} (Intento ${reintentos + 1}/3)... esperando que Google libere cupo...`);
-             // Si falló por cuota, esperamos 20 segundos antes de reintentar
-             await new Promise(resolve => setTimeout(resolve, 20000)); 
-          }
+        const data = await response.json();
 
-          const response = await fetch(`${API_URL}/api/transcribir`, {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!response.ok) {
-            // Si el backend dice "Límite Excedido" (429), lanzamos error para forzar el reintento
-            if(response.status === 429) {
-                throw new Error("Límite de velocidad de Google alcanzado.");
-            }
-            throw new Error(`Fallo al transcribir. Código: ${response.status}`);
-          }
-
-          const data = await response.json();
-          
-          if (data.textoLimpio) {
-             const nuevoFragmento = {
-               id: Date.now() + Math.random(),
-               texto: data.textoLimpio,
-               origen: `${archivo.name} : Transcribe la página ${tarea.inicio} a ${tarea.fin}`
-             };
-             
-             setFragmentos(prev => [...prev, nuevoFragmento]);
-             tareasExitosas.push(tarea.id);
-             exito = true; // ¡Se logró! Salimos del bucle de reintentos.
-          } else {
-             throw new Error("Respuesta vacía del servidor.");
-          }
-
-        } catch (error) {
-          console.error("Error en la tarea:", error);
-          reintentos++;
-          if (reintentos >= maxReintentos) {
-             setMensajeEstado(`Error final en la página ${tarea.inicio} a ${tarea.fin}. Proceso detenido.`);
-             setProcesandoCola(false);
-             setTareaActual(null);
-             // Limpiar de la cola solo las tareas que SÍ fueron exitosas
-             setColaTareas(prev => prev.filter(t => !tareasExitosas.includes(t.id)));
-             return; // Abortar toda la cola si un bloque falla 3 veces seguidas
-          }
+        if (!response.ok) {
+          throw new Error(data.error || `Fallo en la tarea ${i + 1}`);
         }
-      }
 
-      // Si fue exitoso y NO es la última tarea, aplicamos un freno obligatorio
-      if (exito && i < colaTareas.length - 1) {
-        setMensajeEstado(`✅ Completado. Pausa de seguridad de 30s para respetar los límites de Google...`);
-        await new Promise(resolve => setTimeout(resolve, 30000));
+        setBorradorAcumulado(prev => [...prev, { 
+          archivoNombre: tarea.archivo.name,
+          orden: tarea.instruccion, 
+          texto: data.texto 
+        }]);
+
+        if (i < colaTareas.length - 1) {
+          setMensajeEstado(`⏸️ Pausa de seguridad antes del siguiente bloque...`);
+          await new Promise(resolve => setTimeout(resolve, 20000));
+        }
+
+      } catch (err) {
+        setError(`Error en "${tarea.instruccion}" (${tarea.archivo.name}): ${err.message}. Proceso detenido.`);
+        setProcesando(false);
+        setMensajeEstado("");
+        setColaTareas(colaTareas.slice(i)); 
+        return; 
       }
     }
 
-    setMensajeEstado(`🎉 ¡Procesamiento automático finalizado con éxito!`);
-    setProcesandoCola(false);
-    setTareaActual(null);
-    setColaTareas([]);
+    setMensajeEstado("✅ ¡Todas las tareas de todos los tomos fueron procesadas!");
+    setColaTareas([]); 
+    setProcesando(false);
+    setTimeout(() => setMensajeEstado(""), 5000);
   };
 
   // 4. EL NUEVO EXPORTADOR A PDF
