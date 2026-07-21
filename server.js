@@ -71,13 +71,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
 
-      // 1. Configuramos el modelo de manera limpia
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        systemInstruction: systemPrompt
-    });
-  
-      // 2. El Prompt Maestro exacto que funcionaba en tu prueba local
+      // 1. El Prompt Maestro exacto que funcionaba en tu prueba local (MOVIDO ARRIBA)
       const systemPrompt = `Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
 Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
 
@@ -95,6 +89,12 @@ Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE est
 REGLAS DE ORO:
 1. CITACIÓN EXACTA: Cada dato fáctico o indicio DEBE incluir obligatoriamente el tomo y la página.
 2. FORMATO: Tu respuesta debe ser un JSON puro, usa solo comillas simples (') dentro de los textos.`;
+
+      // 2. Configuramos el modelo de manera limpia (DESPUÉS DEL PROMPT)
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash", // Asegúrate de que el modelo sea el correcto (gemini-1.5-flash o gemini-2.5-flash)
+        systemInstruction: systemPrompt
+      });
 
       console.log("[Servidor] Verificando estado de los PDFs en la nube...");
       for (const ticket of tickets) {
