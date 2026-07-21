@@ -92,7 +92,7 @@ REGLAS DE ORO:
 
       // 2. Configuramos el modelo de manera limpia (DESPUÉS DEL PROMPT)
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash", // Asegúrate de que el modelo sea el correcto (gemini-1.5-flash o gemini-2.5-flash)
+        model: "gemini-1.5-flash", // Asegúrate de que el modelo sea el correcto (gemini-1.5-flash o gemini-2.5-flash)
         systemInstruction: systemPrompt
       });
 
@@ -200,7 +200,7 @@ Reglas Estrictas de Transcripción:
 
       // Configuramos el modelo sin forzar JSON, porque queremos Texto Puro
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-1.5-flash",
         systemInstruction: systemPrompt
     });
 
