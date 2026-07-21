@@ -170,12 +170,15 @@ const ExtractorOCR = () => {
 
   // 4. EL NUEVO EXPORTADOR A PDF
   // 4. EL NUEVO EXPORTADOR A PDF
-  // 4. EL NUEVO EXPORTADOR A PDF (La solución definitiva)
+  // 4. EL NUEVO EXPORTADOR A PDF (Con parche de renderizado)
   const exportarTodoAPDF = () => {
     if (borradorAcumulado.length === 0) return;
+    
+    // Opcional: Avisar al usuario que está cargando
+    if(setMensajeEstado) setMensajeEstado("Generando PDF, por favor espera un momento...");
 
     let htmlContent = `
-      <div style="padding: 20px; font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #000; width: 800px;">
+      <div style="padding: 20px; font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #000; background-color: #fff; width: 800px;">
         <h2 style="text-align: center; margin-bottom: 20px;">
           Documento de Transcripciones Oficiales (OCR)
         </h2>
@@ -203,31 +206,37 @@ const ExtractorOCR = () => {
 
     htmlContent += `</div>`;
 
-    // 1. EL TRUCO: Creamos un elemento físico en el navegador
+    // 1. Creamos el contenedor
     const contenedorFisico = document.createElement('div');
     contenedorFisico.innerHTML = htmlContent;
     
-    // 2. Lo escondemos mandándolo muy lejos a la izquierda (fuera de la pantalla)
+    // 2. EL NUEVO TRUCO: Lo dejamos en pantalla (top 0, left 0) 
+    // pero lo mandamos al fondo (z-index negativo) detrás del fondo de tu app.
+    // Además le ponemos fondo blanco estricto para evitar transparencias.
     contenedorFisico.style.position = 'absolute';
-    contenedorFisico.style.left = '-9999px';
     contenedorFisico.style.top = '0';
+    contenedorFisico.style.left = '0';
+    contenedorFisico.style.zIndex = '-9999';
+    contenedorFisico.style.backgroundColor = '#ffffff';
     
-    // 3. Lo pegamos al documento real para forzar al navegador a dibujarlo
     document.body.appendChild(contenedorFisico);
 
     const opcionesPDF = {
       margin:       15,
       filename:     `Transcripciones_Fiscalia_${new Date().getTime()}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2, useCORS: true }, // useCORS asegura que las fuentes carguen bien
+      html2canvas:  { scale: 2, useCORS: true }, 
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    // 4. Generamos el PDF usando el elemento físico
-    html2pdf().set(opcionesPDF).from(contenedorFisico).save().then(() => {
-      // 5. Destruimos la evidencia (borramos el contenedor fantasma) en cuanto baje el archivo
-      document.body.removeChild(contenedorFisico);
-    });
+    // 3. LA CLAVE: Le damos al navegador 800 milisegundos para que "pinte" el texto
+    setTimeout(() => {
+      html2pdf().set(opcionesPDF).from(contenedorFisico).save().then(() => {
+        // 4. Borramos la evidencia cuando el PDF ya se descargó
+        document.body.removeChild(contenedorFisico);
+        if(setMensajeEstado) setMensajeEstado("✅ PDF descargado con éxito.");
+      });
+    }, 800); 
   };
   const limpiarBorrador = () => {
     if (window.confirm("¿Estás seguro de borrar todo el trabajo acumulado?")) {
