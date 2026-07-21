@@ -170,13 +170,12 @@ const ExtractorOCR = () => {
 
   // 4. EL NUEVO EXPORTADOR A PDF
   // 4. EL NUEVO EXPORTADOR A PDF
+  // 4. EL NUEVO EXPORTADOR A PDF (La solución definitiva)
   const exportarTodoAPDF = () => {
     if (borradorAcumulado.length === 0) return;
 
-    // En lugar de crear un elemento fantasma en el DOM, 
-    // armamos todo directamente como una gran cadena de texto HTML.
     let htmlContent = `
-      <div style="padding: 20px; font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #000;">
+      <div style="padding: 20px; font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #000; width: 800px;">
         <h2 style="text-align: center; margin-bottom: 20px;">
           Documento de Transcripciones Oficiales (OCR)
         </h2>
@@ -184,7 +183,6 @@ const ExtractorOCR = () => {
     `;
 
     borradorAcumulado.forEach((item, index) => {
-      // El mismo filtro mágico de limpieza
       let textoLimpio = item.texto
         .replace(/\n{2,}/g, '</p><p style="text-align: justify; margin-bottom: 12px;">')
         .replace(/\n/g, ' ')
@@ -203,22 +201,34 @@ const ExtractorOCR = () => {
       `;
     });
 
-    // Cerramos el div principal
     htmlContent += `</div>`;
 
-    // Configuramos cómo queremos el PDF
+    // 1. EL TRUCO: Creamos un elemento físico en el navegador
+    const contenedorFisico = document.createElement('div');
+    contenedorFisico.innerHTML = htmlContent;
+    
+    // 2. Lo escondemos mandándolo muy lejos a la izquierda (fuera de la pantalla)
+    contenedorFisico.style.position = 'absolute';
+    contenedorFisico.style.left = '-9999px';
+    contenedorFisico.style.top = '0';
+    
+    // 3. Lo pegamos al documento real para forzar al navegador a dibujarlo
+    document.body.appendChild(contenedorFisico);
+
     const opcionesPDF = {
-      margin:       15, // Márgenes en milímetros
+      margin:       15,
       filename:     `Transcripciones_Fiscalia_${new Date().getTime()}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
-      html2canvas:  { scale: 2 }, // Escala para que el texto salga nítido
+      html2canvas:  { scale: 2, useCORS: true }, // useCORS asegura que las fuentes carguen bien
       jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    // Le pasamos la cadena HTML directamente a la librería
-    html2pdf().set(opcionesPDF).from(htmlContent).save();
+    // 4. Generamos el PDF usando el elemento físico
+    html2pdf().set(opcionesPDF).from(contenedorFisico).save().then(() => {
+      // 5. Destruimos la evidencia (borramos el contenedor fantasma) en cuanto baje el archivo
+      document.body.removeChild(contenedorFisico);
+    });
   };
-
   const limpiarBorrador = () => {
     if (window.confirm("¿Estás seguro de borrar todo el trabajo acumulado?")) {
       setBorradorAcumulado([]);
