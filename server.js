@@ -9,25 +9,20 @@ require('dotenv').config();
 
 const app = express();
 // Pequeña mejora para Render: usar el puerto que ellos asignen o el 3000
+app.use(cors());
 const puerto = process.env.PORT || 3000; 
 
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
 // Soportar hasta 150MB por archivo
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, '/tmp') // Render permite escribir en la carpeta /tmp
-  },
-  filename: function (req, file, cb) {
-    cb(null, file.originalname)
-  }
-});
 
-// Aumentar el límite a 150MB explícitamente
+// Volvemos al almacenamiento directo en la memoria RAM (Más rápido, pero ten cuidado con archivos gigantes)
+const storage = multer.memoryStorage();
+
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 150 * 1024 * 1024 } // 150 MB
+    limits: { fileSize: 150 * 1024 * 1024 } // Mantenemos el límite de 150 MB por seguridad
 });
 // Inicializamos a Google UNA SOLA VEZ
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
