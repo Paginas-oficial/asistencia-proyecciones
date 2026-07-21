@@ -18,11 +18,21 @@ app.use(express.urlencoded({ limit: '150mb', extended: true }));
 // Soportar hasta 150MB por archivo
 
 // Volvemos al almacenamiento directo en la memoria RAM (Más rápido, pero ten cuidado con archivos gigantes)
-const storage = multer.memoryStorage();
+// Usamos almacenamiento en disco para que Gemini pueda leer la ruta del archivo
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    // Render permite escribir en la carpeta temporal /tmp
+    cb(null, '/tmp') 
+  },
+  filename: function (req, file, cb) {
+    // Le agregamos la fecha para que no se sobreescriban archivos con el mismo nombre
+    cb(null, Date.now() + '-' + file.originalname)
+  }
+});
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 150 * 1024 * 1024 } // Mantenemos el límite de 150 MB por seguridad
+    limits: { fileSize: 150 * 1024 * 1024 } // Límite de 150 MB
 });
 // Inicializamos a Google UNA SOLA VEZ
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
