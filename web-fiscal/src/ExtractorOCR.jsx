@@ -169,21 +169,18 @@ const ExtractorOCR = () => {
   };
 
   // 4. EL NUEVO EXPORTADOR A PDF
+  // 4. EL NUEVO EXPORTADOR A PDF
   const exportarTodoAPDF = () => {
     if (borradorAcumulado.length === 0) return;
 
-    // Creamos un contenedor HTML virtual en la memoria
-    const elementoContenedor = document.createElement('div');
-    elementoContenedor.style.padding = '20px';
-    elementoContenedor.style.fontFamily = 'Arial, sans-serif';
-    elementoContenedor.style.fontSize = '12pt'; // Tamaño de letra formal
-    elementoContenedor.style.lineHeight = '1.5';
-
+    // En lugar de crear un elemento fantasma en el DOM, 
+    // armamos todo directamente como una gran cadena de texto HTML.
     let htmlContent = `
-      <h2 style="text-align: center; color: #000; margin-bottom: 20px;">
-        Documento de Transcripciones Oficiales (OCR)
-      </h2>
-      <hr style="margin-bottom: 20px;">
+      <div style="padding: 20px; font-family: Arial, sans-serif; font-size: 12pt; line-height: 1.5; color: #000;">
+        <h2 style="text-align: center; margin-bottom: 20px;">
+          Documento de Transcripciones Oficiales (OCR)
+        </h2>
+        <hr style="margin-bottom: 20px;">
     `;
 
     borradorAcumulado.forEach((item, index) => {
@@ -206,7 +203,8 @@ const ExtractorOCR = () => {
       `;
     });
 
-    elementoContenedor.innerHTML = htmlContent;
+    // Cerramos el div principal
+    htmlContent += `</div>`;
 
     // Configuramos cómo queremos el PDF
     const opcionesPDF = {
@@ -214,11 +212,11 @@ const ExtractorOCR = () => {
       filename:     `Transcripciones_Fiscalia_${new Date().getTime()}.pdf`,
       image:        { type: 'jpeg', quality: 0.98 },
       html2canvas:  { scale: 2 }, // Escala para que el texto salga nítido
-      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' } // Formato A4
+      jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
     };
 
-    // La librería hace la magia y fuerza la descarga
-    html2pdf().set(opcionesPDF).from(elementoContenedor).save();
+    // Le pasamos la cadena HTML directamente a la librería
+    html2pdf().set(opcionesPDF).from(htmlContent).save();
   };
 
   const limpiarBorrador = () => {
