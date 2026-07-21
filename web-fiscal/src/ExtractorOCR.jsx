@@ -171,6 +171,7 @@ const ExtractorOCR = () => {
   // 4. EL NUEVO EXPORTADOR A PDF
   // 4. EL NUEVO EXPORTADOR A PDF
   // 4. EL NUEVO EXPORTADOR A PDF (Con parche de renderizado)
+  // 4. EL NUEVO EXPORTADOR A PDF (Con parche de renderizado)
   const exportarTodoAPDF = () => {
     if (borradorAcumulado.length === 0) return;
     
