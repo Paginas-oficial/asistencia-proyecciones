@@ -86,17 +86,21 @@ Tu tarea NO es hacer un resumen ejecutivo del caso, sino realizar un INVENTARIO 
 --- METODOLOGÍA DE EXTRACCIÓN "CERO OMISIONES" ---
 1. EXTRACCIÓN TOTAL: Tienes ESTRICTAMENTE PROHIBIDO filtrar, omitir, ignorar o subestimar documentos. No juzgues si un documento es "poco relevante", si está en el PDF, es un elemento de convicción y debe ser listado.
 2. CAZA DE DOCUMENTOS ESPECÍFICOS: Debes buscar activamente y extraer como objetos individuales TODOS LOS:
-   - Oficios (oficios de remisión, respuestas, solicitudes, múltiples oficios consecutivos).
+   - Oficios (oficios de remisión, respuestas, solicitudes).
    - Resoluciones (Ministeriales, Directorales, Jefaturales, Supremas).
    - Informes (de Control, Especiales, Técnicos, Legales).
    - Actas (Allanamiento, Incautación, Entregas).
    - Memorandos, Correos Electrónicos, Contratos y Comprobantes.
-3. REGLA DE CANTIDAD EXACTA: Si el tomo contiene 60 Oficios y 15 Resoluciones Ministeriales, tu lista 'elementosConviccionEncontrados' DEBE tener exactamente 75 objetos. Está TERMINANTEMENTE PROHIBIDO agruparlos diciendo "Varios oficios" o "Conjunto de resoluciones". Extrae CADA UNO con su número identificador único.
+3. REGLA CRÍTICA DE ANEXOS (DESGLOSE OBLIGATORIO): 
+   - Los ANEXOS adjuntos a un documento principal DEBEN registrarse como objetos independientes. 
+   - Está PROHIBIDO agrupar un informe y sus anexos en un solo objeto.
+   - Ejemplo: Si encuentras un "Oficio N° 05" que adjunta un "Contrato de Alquiler" como anexo, debes extraer el Oficio como un elemento, y luego extraer el Contrato como otro elemento separado, cada uno con su propia paginación exacta.
+4. REGLA DE CANTIDAD EXACTA: Si el tomo contiene 20 Oficios, 10 Resoluciones y 30 Anexos distintos, tu lista 'elementosConviccionEncontrados' DEBE tener exactamente 60 objetos. Prefiere el exceso de detalle a la omisión.
 
 --- REGLAS DE PAGINACIÓN ---
 Para cada elemento, identifica exactamente dónde empieza y termina en el PDF físico:
-- "paginaInicio": Número de página donde comienza (carátula, título o membrete).
-- "paginaFin": Número de página donde termina (firmas o anexos).
+- "paginaInicio": Número de página donde comienza el documento o el anexo específico.
+- "paginaFin": Número de página donde termina.
 - Si es de una sola carilla, ambos números deben ser iguales.
 
 --- REGLA ESTRICTA DE ARCHIVOS ---
@@ -104,7 +108,7 @@ Para 'tomoOrigen', PROHIBIDO inventar nombres. Los ÚNICOS válidos son: ['${nom
 
 --- FORMATO DE SALIDA EXIGIDO ---
 ÚNICAMENTE JSON válido.
-REGLA VITAL: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENTRO DE LOS VALORES DE TEXTO. Usa comillas simples ('ejemplo') para citas o nombres internos. El uso de comillas dobles internas romperá el sistema.
+REGLA VITAL: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENTRO DE LOS VALORES DE TEXTO. Usa comillas simples ('ejemplo') para citas o nombres internos.
 
 {
   "resumenCronologico": "Historia detallada y cronológica...",
@@ -112,8 +116,8 @@ REGLA VITAL: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENTRO DE LOS VA
   "probabilidadExito": "Alta, Media o Baja",
   "elementosConviccionEncontrados": [
     {
-      "tipo": "Nombre completo y N° exacto (Ej. Oficio N° 123-2023-MINSA o Resolución Ministerial N° 045-2016)",
-      "descripcion": "De qué trata el documento y qué prueba. Usa comillas simples para 'citas'.",
+      "tipo": "Nombre exacto (Ej. Oficio N° 123-2023 o Anexo 1: Contrato de Servicios N° 045)",
+      "descripcion": "De qué trata el documento o anexo. Usa comillas simples para 'citas'.",
       "tomoOrigen": "Nombre exacto del archivo pdf",
       "paginaInicio": 12,
       "paginaFin": 14
