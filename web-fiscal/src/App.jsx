@@ -39,29 +39,88 @@ function App() {
   };
 
   // 3. Función para mandar a analizar todos los tickets juntos
+  // 3. Función para mandar a analizar usando una SUPER COLA (Lotes de 3)
   const procesarExpediente = async () => {
     if (tickets.length === 0) return alert('Agrega al menos un tomo al carrito.');
     
     setCargando(true);
-    setMensajeEstado('Analizando cruce de información. Esto puede tardar un par de minutos...');
+    setResultado(null); // Limpiamos la pantalla por si había un análisis anterior
     
+    // --- MAGIA 1: FRACCIONAR EN LOTES DE 3 ---
+    const tamanoLote = 3;
+    const lotes = [];
+    for (let i = 0; i < tickets.length; i += tamanoLote) {
+      lotes.push(tickets.slice(i, i + tamanoLote));
+    }
+
+    // --- MAGIA 2: EL ENSAMBLADOR MAESTRO ---
+    let veredictoFinal = {
+      decision: "ARCHIVAR", // Por defecto
+      probabilidadExito: "Baja", 
+      resumenCronologico: "",
+      elementosConviccionEncontrados: [],
+      elementosFaltantes: [],
+      sustentoJuridico: ""
+    };
+    
+    let indiciosDeViabilidad = false; // Nos ayudará a decidir si el caso es fuerte
+
     try {
-      // Mandamos los tickets a la Ruta 2 de nuestro servidor
-      const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-tickets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tickets }) // Enviamos el array de tickets
-      });
-      
-      const datos = await respuesta.json();
-      if (!respuesta.ok) throw new Error(datos.error || 'Error en el análisis');
-      
-      setResultado(datos);
+      // --- MAGIA 3: EL BUCLE (PROCESAR LOTE POR LOTE) ---
+      for (let i = 0; i < lotes.length; i++) {
+        const tomosInicio = (i * tamanoLote) + 1;
+        const tomosFin = Math.min((i + 1) * tamanoLote, tickets.length);
+        setMensajeEstado(`Analizando Lote ${i + 1} de ${lotes.length} (Tomos ${tomosInicio} al ${tomosFin})...`);
+        
+        // Enviamos solo este lote al servidor
+        const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-tickets', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tickets: lotes[i] }) 
+        });
+        
+        const datos = await respuesta.json();
+        if (!respuesta.ok) throw new Error(datos.error || `Fallo en el lote ${i + 1}`);
+        
+        // --- FUSIONAR RESULTADOS ---
+        // Pegamos los textos largos separándolos por un doble salto de línea
+        if (datos.resumenCronologico) {
+          veredictoFinal.resumenCronologico += (veredictoFinal.resumenCronologico ? "\n\n" : "") + datos.resumenCronologico;
+        }
+        if (datos.sustentoJuridico) {
+          veredictoFinal.sustentoJuridico += (veredictoFinal.sustentoJuridico ? "\n\n" : "") + datos.sustentoJuridico;
+        }
+        
+        // Función auxiliar para juntar las listas (incluso si la IA devuelve texto en vez de Array)
+        const fusionarLista = (listaActual, listaNueva) => {
+            let arregloNuevo = Array.isArray(listaNueva) ? listaNueva : (listaNueva ? String(listaNueva).split('\n') : []);
+            return [...listaActual, ...arregloNuevo.filter(item => item.trim() !== '')];
+        };
+
+        veredictoFinal.elementosConviccionEncontrados = fusionarLista(veredictoFinal.elementosConviccionEncontrados, datos.elementosConviccionEncontrados);
+        veredictoFinal.elementosFaltantes = fusionarLista(veredictoFinal.elementosFaltantes, datos.elementosFaltantes);
+
+        // Si en ALGÚN lote la IA dice que hay Alta o Media probabilidad, marcamos el caso como viable
+        const prob = String(datos.probabilidadExito).toUpperCase();
+        if (prob.includes('ALTA') || prob.includes('MEDIA')) {
+          indiciosDeViabilidad = true;
+        }
+      }
+
+      // --- MAGIA 4: ENTREGAR EL REPORTE FINAL ---
+      veredictoFinal.probabilidadExito = indiciosDeViabilidad ? "Media/Alta (Existen elementos de convicción suficientes)" : "Baja (Carece de elementos suficientes)";
+      veredictoFinal.decision = indiciosDeViabilidad ? "FORMALIZAR" : "ARCHIVAR";
+
+      setResultado(veredictoFinal); // Imprimimos en pantalla
+      setMensajeEstado('¡Análisis masivo completado con éxito!');
+
     } catch (error) {
-      alert(`Ocurrió un problema: ${error.message}`);
+      alert(`Ocurrió un problema procesando la cola: ${error.message}`);
+      setMensajeEstado('Proceso abortado.');
     } finally {
       setCargando(false);
-      setMensajeEstado('');
+      // Borramos el mensaje de éxito después de 4 segundos
+      setTimeout(() => setMensajeEstado(''), 4000); 
     }
   };
 
