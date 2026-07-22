@@ -87,7 +87,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
       4. Logística/SEACE: Contratos, TDR, Créditos Presupuestarios, Actas de Conformidad, Reportes SEACE.
       5. Gestión Institucional: MOF, ROF, Opiniones Técnicas/Legales.
       6. Penales: Declaraciones, Pericias, Actas de Allanamiento.
-      
+      REGLA ESTRICTA PARA 'tomoOrigen': Tienes estrictamente PROHIBIDO usar nombres de instituciones (como CENARES, Contraloría, etc.) o descripciones genéricas (como Carpeta Fiscal). El campo 'tomoOrigen' DEBE contener ÚNICA Y EXACTAMENTE el nombre del archivo original que te estoy enviando para analizar.
       Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin formato Markdown, con esta estructura exacta:
       {
         "resumenCronologico": "Historia de los hechos...",
@@ -107,7 +107,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
 
       // 2. Modelo configurado con blindaje para JSON
       const model = genAI.getGenerativeModel({
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-2.5-pro",
         systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: "application/json" // OBLIGA a devolver JSON puro
@@ -213,7 +213,7 @@ Reglas Estrictas de Transcripción:
  - Tablas: Transcribe el contenido celda por celda, fila por fila. Usa un punto y coma (;) para separar celdas.`;
 
       const model = genAI.getGenerativeModel({
-        model: "gemini-3.1-flash-lite",
+        model: "gemini-2.5-pro",
         systemInstruction: systemPrompt
       });
 
