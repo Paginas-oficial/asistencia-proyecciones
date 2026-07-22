@@ -110,7 +110,9 @@ Los ÚNICOS nombres de archivos válidos en tu memoria actual son: ['${nombresAr
 Debes copiar literalmente el nombre del archivo de esta lista de donde extrajiste el documento.
 
 --- FORMATO DE SALIDA EXIGIDO ---
-Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin bloques de código ni formato Markdown, con esta estructura exacta:
+Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin bloques de código ni formato Markdown, con esta estructura exacta.
+REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENTRO DE LOS VALORES DE TEXTO. Si necesitas citar algo, usa comillas simples ('ejemplo'). El uso de comillas dobles internas romperá el sistema.
+
 {
   "resumenCronologico": "Historia detallada de los hechos investigados...",
   "sustentoJuridico": "Análisis legal aplicable...",
@@ -118,7 +120,7 @@ Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin bloques de código
   "elementosConviccionEncontrados": [
     {
       "tipo": "Nombre completo del documento (Ej. Informe de Control Específico N° 070-2023)",
-      "descripcion": "Resumen detallado de su contenido y su relevancia para la investigación",
+      "descripcion": "Resumen detallado de su contenido. Usa solo comillas simples para 'citas'.",
       "tomoOrigen": "Nombre exacto del archivo pdf (de la lista permitida)",
       "paginaInicio": 37,
       "paginaFin": 50
