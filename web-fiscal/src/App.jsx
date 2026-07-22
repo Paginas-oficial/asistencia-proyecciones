@@ -128,48 +128,57 @@ function App() {
   };
   // NUEVA FUNCIÓN: Cortar y Descargar PDF
   // NUEVA FUNCIÓN: Cortar y Descargar PDF (Con Búsqueda Inteligente)
+  // NUEVA FUNCIÓN: Cortar y Descargar PDF (Con Detector de Tomos y Traducciones)
   const descargarPaginaFisica = async (nombreDocumento, numeroPagina, tipoElemento) => {
     try {
-      // --- 1. BÚSQUEDA INTELIGENTE DEL ARCHIVO ---
-      // Intento A: Búsqueda exacta
-      let ticketCorrecto = tickets.find(t => t.nombre === nombreDocumento);
+      // 1. Verificación vital: ¿Siguen los PDFs en la memoria RAM del navegador?
+      if (!tickets || tickets.length === 0) {
+        return alert("⚠️ El carrito está vacío. Recuerda que NO debes recargar la página ni darle a 'Limpiar' antes de descargar las hojas. Por favor, sube los tomos al Panel Principal de nuevo.");
+      }
 
-      // Intento B: Búsqueda flexible (Si la IA resumió el nombre a "Tomo 1")
+      // Intento A: Búsqueda exacta
+      let ticketCorrecto = tickets.find(t => t.nombre.trim() === String(nombreDocumento).trim());
+
+      // Intento B: Si la IA tradujo "compressed" a "comprimido" o alteró el "C.F"
       if (!ticketCorrecto) {
-        // Convertimos "Tomo 1" a "tomo1" (minúsculas y sin espacios)
-        const nombreBuscado = String(nombreDocumento).toLowerCase().replace(/\s+/g, ''); 
+        // Buscamos la palabra "Tomo" seguida de su número
+        const matchTomo = String(nombreDocumento).match(/tomo\s*(\d+)/i);
+        
+        if (matchTomo) {
+          const numeroTomo = matchTomo[1]; // Extraemos solo el número (ej: "1")
+          ticketCorrecto = tickets.find(t => {
+            const matchTTicket = t.nombre.match(/tomo\s*(\d+)/i);
+            return matchTTicket && matchTTicket[1] === numeroTomo; // Emparejamos "1" con "1"
+          });
+        }
+      }
+
+      // Intento C: Búsqueda flexible extrema
+      if (!ticketCorrecto) {
+        const limpiarTexto = (txt) => String(txt).toLowerCase().replace(/[^a-z0-9]/g, '').replace('comprimido', '').replace('compressed', '');
+        const limpioBuscado = limpiarTexto(nombreDocumento);
         
         ticketCorrecto = tickets.find(t => {
-          const nombreArchivo = t.nombre.toLowerCase().replace(/\s+/g, '');
-          // Buscamos si "tomo1" está dentro de "tomo1_compressed-1-149.pdf"
-          return nombreArchivo.includes(nombreBuscado) || nombreBuscado.includes(nombreArchivo);
+          const limpioTicket = limpiarTexto(t.nombre);
+          return limpioTicket.includes(limpioBuscado) || limpioBuscado.includes(limpioTicket);
         });
       }
 
-      // Intento C: Fallback extremo (Si la IA solo respondió un número, ej "1")
-      if (!ticketCorrecto) {
-         const matchNumero = String(nombreDocumento).match(/\d+/);
-         if (matchNumero) {
-           const index = parseInt(matchNumero[0], 10) - 1;
-           ticketCorrecto = tickets[index]; // Asumimos el orden de subida
-         }
-      }
-
-      // Si después de todo no lo encuentra, mostramos error
+      // Si falla todo o el archivo no tiene la data física
       if (!ticketCorrecto || !ticketCorrecto.archivoFisico) {
-        return alert(`Error: No pude encontrar el archivo original de "${nombreDocumento}". Por favor, verifica que los PDFs sigan cargados en el panel principal.`);
+        return alert(`Error: No pude emparejar "${nombreDocumento}" con ningún PDF en tu carrito. Asegúrate de haber subido este tomo específico.`);
       }
 
       setMensajeEstado(`Extrayendo Pág. ${numeroPagina} de ${ticketCorrecto.nombre}...`);
       
-      // --- 2. PROCESO DE CORTE DEL PDF ---
+      // PROCESO DE CORTE
       const arrayBuffer = await ticketCorrecto.archivoFisico.arrayBuffer();
       const pdfOriginal = await PDFDocument.load(arrayBuffer);
       const pdfCortado = await PDFDocument.create();
       
       const indicePagina = parseInt(numeroPagina, 10) - 1; 
       if (indicePagina < 0 || indicePagina >= pdfOriginal.getPageCount()) {
-          throw new Error("El número de página excede el total del documento original.");
+          throw new Error("El número de página excede el total del PDF original.");
       }
 
       const [paginaCopiada] = await pdfCortado.copyPages(pdfOriginal, [indicePagina]);
@@ -181,7 +190,6 @@ function App() {
       
       const link = document.createElement('a');
       link.href = url;
-      // Limpiamos el nombre para que el archivo guardado no tenga caracteres raros
       link.download = `${String(tipoElemento).replace(/[^a-zA-Z0-9]/g, '_')}_Pag${numeroPagina}.pdf`;
       document.body.appendChild(link);
       link.click();
