@@ -76,7 +76,8 @@ app.post('/api/analizar-tickets', async (req, res) => {
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
-
+// Extraemos los nombres reales de los archivos que llegaron en la petición
+const nombresArchivosReales = req.body.tickets.map(t => t.nombre).join("', '");
       // 1. Prompt corregido (eliminado el doble const)
       const systemPrompt = `
       Eres un fiscal experto de Perú. Analiza el texto extraído de la Carpeta Fiscal.
@@ -87,7 +88,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
       4. Logística/SEACE: Contratos, TDR, Créditos Presupuestarios, Actas de Conformidad, Reportes SEACE.
       5. Gestión Institucional: MOF, ROF, Opiniones Técnicas/Legales.
       6. Penales: Declaraciones, Pericias, Actas de Allanamiento.
-      REGLA ESTRICTA PARA 'tomoOrigen': Tienes estrictamente PROHIBIDO usar nombres de instituciones (como CENARES, Contraloría, etc.) o descripciones genéricas (como Carpeta Fiscal). El campo 'tomoOrigen' DEBE contener ÚNICA Y EXACTAMENTE el nombre del archivo original que te estoy enviando para analizar.
+      
       Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin formato Markdown, con esta estructura exacta:
       {
         "resumenCronologico": "Historia de los hechos...",
@@ -103,6 +104,10 @@ app.post('/api/analizar-tickets', async (req, res) => {
         ],
         "elementosFaltantes": ["Diligencia 1", "Diligencia 2"]
       }
+  REGLA ESTRICTA PARA 'tomoOrigen': La IA no tiene permitido inventar nombres de archivos ni usar números de caso. 
+  Los ÚNICOS nombres válidos que corresponden a los archivos que te estoy enviando son: ['${nombresArchivosReales}']. 
+  El campo 'tomoOrigen' DEBE contener exactamente el nombre del archivo de esta lista de donde extrajiste la información, copiándolo letra por letra.
+
       `;
 
       // 2. Modelo configurado con blindaje para JSON
