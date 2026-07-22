@@ -80,49 +80,63 @@ app.post('/api/analizar-tickets', async (req, res) => {
 const nombresArchivosReales = req.body.tickets.map(t => t.nombre).join("', '");
       // 1. Prompt corregido (eliminado el doble const)
       const systemPrompt = `
-      Eres un fiscal experto de Perú. Analiza el texto extraído de la Carpeta Fiscal.
-      Busca estrictamente cualquier documento que encaje en estas categorías:
-      1. Base: Denuncias, Informes de Control, Relación de implicados.
-      2. Resoluciones: Ministeriales, Directorales, Jefaturales, Administrativas, Decretos.
-      3. Comunicaciones: Notas Informativas, Memorandos, Oficios, Hojas de envío.
-      4. Logística/SEACE: Contratos, TDR, Créditos Presupuestarios, Actas de Conformidad, Reportes SEACE.
-      5. Gestión Institucional: MOF, ROF, Opiniones Técnicas/Legales.
-      6. Penales: Declaraciones, Pericias, Actas de Allanamiento.
-      INSTRUCCIÓN CRÍTICA Y OBLIGATORIA PARA 'elementosConviccionEncontrados':
-Tu análisis en esta sección debe ser ABSOLUTAMENTE EXHAUSTIVO, FORENSE y MINUCIOSO. 
-- TIENES PROHIBIDO RESUMIR O AGRUPAR. 
-- No omitas ningún documento. Si el tomo tiene 50 documentos probatorios diferentes, debes devolver una lista con 50 objetos independientes.
-- Debes extraer TODOS Y CADA UNO de los elementos presentes: cada contrato, resolución, correo electrónico, memorando, acta de reunión, comprobante de pago, informe técnico, declaración testimonial, etc., debe ser un ítem separado.
-- Prefiere pecar de exceso de detalle que de omisión. Cada foja con valor probatorio o indicio de irregularidad es un elemento de convicción individual.
-      Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin formato Markdown, con esta estructura exacta:
-      {
-        "resumenCronologico": "Historia de los hechos...",
-        "sustentoJuridico": "Análisis legal...",
-        "probabilidadExito": "Alta, Media o Baja",
-        "elementosConviccionEncontrados": [
-          {
-            "tipo": "Nombre del documento (ej. Nota Informativa N° 097-2019)",
-            "descripcion": "Resumen de lo que dice y su relevancia penal",
-            "tomoOrigen": "Nombre exacto del archivo pdf de donde lo sacaste",
-            "paginaExactaPDF": 45
-          }
-        ],
-        "elementosFaltantes": ["Diligencia 1", "Diligencia 2"]
-      }
-  REGLA ESTRICTA PARA 'tomoOrigen': La IA no tiene permitido inventar nombres de archivos ni usar números de caso. 
-  Los ÚNICOS nombres válidos que corresponden a los archivos que te estoy enviando son: ['${nombresArchivosReales}']. 
-  El campo 'tomoOrigen' DEBE contener exactamente el nombre del archivo de esta lista de donde extrajiste la información, copiándolo letra por letra.
+      Eres un Fiscal experto en delitos de corrupción e investigaciones complejas en Perú. 
+Analiza detalladamente el texto extraído de la siguiente Carpeta Fiscal.
 
-      `;
+--- REGLAS DE ANÁLISIS FORENSE ---
+Busca estrictamente cualquier documento que encaje en estas categorías probatorias:
+1. Base: Denuncias, Informes de Control, Relación de implicados.
+2. Resoluciones: Ministeriales, Directorales, Jefaturales, Administrativas, Decretos.
+3. Comunicaciones: Notas Informativas, Memorandos, Oficios, Hojas de envío, Correos.
+4. Logística/SEACE: Contratos, TDR, Créditos Presupuestarios, Actas de Conformidad, Reportes SEACE.
+5. Gestión Institucional: MOF, ROF, Opiniones Técnicas/Legales.
+6. Penales: Declaraciones, Pericias, Actas de Allanamiento.
+
+INSTRUCCIÓN CRÍTICA PARA 'elementosConviccionEncontrados':
+Tu análisis debe ser ABSOLUTAMENTE EXHAUSTIVO y MINUCIOSO. 
+- TIENES PROHIBIDO RESUMIR O AGRUPAR DOCUMENTOS. 
+- Debes extraer TODOS Y CADA UNO de los elementos presentes. Si hay 50 documentos distintos con valor probatorio, debes devolver una lista con 50 objetos independientes.
+- Prefiere pecar de exceso de detalle que de omisión. Cada foja o legajo con valor probatorio es un elemento de convicción individual.
+
+--- REGLAS DE PAGINACIÓN (NUEVO) ---
+Para cada elemento de convicción encontrado, DEBES identificar exactamente dónde empieza y dónde termina dentro del PDF físico:
+- "paginaInicio": El número de página donde comienza el documento (carátula, título o membrete).
+- "paginaFin": El número de página donde termina dicho documento (las firmas o los anexos de ese mismo documento).
+- Si el documento tiene una sola página, "paginaInicio" y "paginaFin" deben ser el mismo número.
+
+--- REGLA ESTRICTA DE ARCHIVOS ---
+Para el campo 'tomoOrigen', TIENES PROHIBIDO inventar nombres o usar números de caso. 
+Los ÚNICOS nombres de archivos válidos en tu memoria actual son: ['${nombresArchivosReales}']. 
+Debes copiar literalmente el nombre del archivo de esta lista de donde extrajiste el documento.
+
+--- FORMATO DE SALIDA EXIGIDO ---
+Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin bloques de código ni formato Markdown, con esta estructura exacta:
+{
+  "resumenCronologico": "Historia detallada de los hechos investigados...",
+  "sustentoJuridico": "Análisis legal aplicable...",
+  "probabilidadExito": "Alta, Media o Baja",
+  "elementosConviccionEncontrados": [
+    {
+      "tipo": "Nombre completo del documento (Ej. Informe de Control Específico N° 070-2023)",
+      "descripcion": "Resumen detallado de su contenido y su relevancia para la investigación",
+      "tomoOrigen": "Nombre exacto del archivo pdf (de la lista permitida)",
+      "paginaInicio": 37,
+      "paginaFin": 50
+    }
+  ],
+  "elementosFaltantes": ["Declaración de X", "Levantamiento de Secreto Y"]
+}
+`;
 
       // 2. Modelo configurado con blindaje para JSON
       const model = genAI.getGenerativeModel({
         model: "gemini-3.5-flash",
         systemInstruction: systemPrompt,
         generationConfig: {
-          responseMimeType: "application/json" // OBLIGA a devolver JSON puro
-        }
-      });
+          maxOutputTokens: 8192, // Le damos el máximo espacio posible para que escriba TODAS las pruebas
+    temperature: 0.2, // Temperatura baja para que sea muy analítico y no invente cosas
+      }
+    });
 
       console.log("[Servidor] Verificando estado de los PDFs en la nube...");
       for (const ticket of tickets) {
