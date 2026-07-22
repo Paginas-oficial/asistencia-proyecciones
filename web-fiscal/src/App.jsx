@@ -1,17 +1,14 @@
-import { useState } from 'react'
-import './App.css'
+import { useState } from 'react';
+import './App.css';
 import ExtractorOCR from './ExtractorOCR';
 import { PDFDocument } from 'pdf-lib';
 
 function App() {
-  // Lógica de datos (Intacta)
   const [tickets, setTickets] = useState([]); 
   const [cargando, setCargando] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState('');
   const [resultado, setResultado] = useState(null);
-
-  // NUEVO LÓGICA VISUAL: Controla en qué "pantalla" estamos
-  const [vistaActual, setVistaActual] = useState('inicio'); // 'inicio', 'resumen', 'elementos', 'ocr'
+  const [vistaActual, setVistaActual] = useState('inicio');
 
   const subirTomo = async (e) => {
     const archivo = e.target.files[0];
@@ -32,7 +29,9 @@ function App() {
       
       if (!respuesta.ok) throw new Error(datos.error || 'Error al subir');
       
-      setTickets(prevTickets => [...prevTickets, datos.ticket]);
+      // LA REPARACIÓN CRÍTICA ESTÁ AQUÍ: Guardamos el archivo físico en la RAM
+      setTickets(prevTickets => [...prevTickets, { ...datos.ticket, archivoFisico: archivo }]);
+      
     } catch (error) {
       alert(`Error al subir tomo: ${error.message}`);
     } finally {
@@ -42,7 +41,6 @@ function App() {
     }
   };
 
-  // Función de Super Cola (Intacta)
   const procesarExpediente = async () => {
     if (tickets.length === 0) return alert('Agrega al menos un tomo al carrito.');
     
@@ -59,8 +57,8 @@ function App() {
       decision: "ARCHIVAR",
       probabilidadExito: "Baja", 
       resumenCronologico: "",
-      elementosConviccionEncontrados: [], // Arreglo de objetos
-      elementosFaltantes: [], // Arreglo de textos
+      elementosConviccionEncontrados: [],
+      elementosFaltantes: [],
       sustentoJuridico: ""
     };
     
@@ -68,11 +66,9 @@ function App() {
 
     try {
       for (let i = 0; i < lotes.length; i++) {
-        const tomosInicio = (i * tamanoLote) + 1;
-        const tomosFin = Math.min((i + 1) * tamanoLote, tickets.length);
         setMensajeEstado(`Analizando Lote ${i + 1} de ${lotes.length}...`);
         
-        // Limpiamos el archivo físico temporalmente para no saturar la red
+        // Limpiamos el archivo físico temporalmente para no saturar la red al enviarlo al backend
         const lotesParaRed = lotes[i].map(t => ({ ...t, archivoFisico: undefined }));
 
         const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-tickets', {
@@ -87,9 +83,6 @@ function App() {
         if (datos.resumenCronologico) veredictoFinal.resumenCronologico += (veredictoFinal.resumenCronologico ? "\n\n" : "") + datos.resumenCronologico;
         if (datos.sustentoJuridico) veredictoFinal.sustentoJuridico += (veredictoFinal.sustentoJuridico ? "\n\n" : "") + datos.sustentoJuridico;
         
-        // --- EL ARREGLO ESTÁ AQUÍ: FUSIÓN INTELIGENTE ---
-        
-        // 1. Fusión de Elementos de Convicción (Ahora son OBJETOS, los sumamos directo sin usar trim)
         if (Array.isArray(datos.elementosConviccionEncontrados)) {
           veredictoFinal.elementosConviccionEncontrados = [
             ...veredictoFinal.elementosConviccionEncontrados,
@@ -97,7 +90,6 @@ function App() {
           ];
         }
 
-        // 2. Fusión de Elementos Faltantes (Siguen siendo TEXTOS, aseguramos que sean strings antes de usar trim)
         if (Array.isArray(datos.elementosFaltantes)) {
           const faltantesLimpios = datos.elementosFaltantes.filter(item => typeof item === 'string' && item.trim() !== '');
           veredictoFinal.elementosFaltantes = [
@@ -106,7 +98,6 @@ function App() {
           ];
         }
 
-        // Evaluación de viabilidad
         const prob = String(datos.probabilidadExito).toUpperCase();
         if (prob.includes('ALTA') || prob.includes('MEDIA')) {
           indiciosDeViabilidad = true;
@@ -126,34 +117,26 @@ function App() {
       setTimeout(() => setMensajeEstado(''), 4000); 
     }
   };
-  // NUEVA FUNCIÓN: Cortar y Descargar PDF
-  // NUEVA FUNCIÓN: Cortar y Descargar PDF (Con Búsqueda Inteligente)
-  // NUEVA FUNCIÓN: Cortar y Descargar PDF (Con Detector de Tomos y Traducciones)
+
   const descargarPaginaFisica = async (nombreDocumento, numeroPagina, tipoElemento) => {
     try {
-      // 1. Verificación vital: ¿Siguen los PDFs en la memoria RAM del navegador?
       if (!tickets || tickets.length === 0) {
         return alert("⚠️ El carrito está vacío. Recuerda que NO debes recargar la página ni darle a 'Limpiar' antes de descargar las hojas. Por favor, sube los tomos al Panel Principal de nuevo.");
       }
 
-      // Intento A: Búsqueda exacta
       let ticketCorrecto = tickets.find(t => t.nombre.trim() === String(nombreDocumento).trim());
 
-      // Intento B: Si la IA tradujo "compressed" a "comprimido" o alteró el "C.F"
       if (!ticketCorrecto) {
-        // Buscamos la palabra "Tomo" seguida de su número
         const matchTomo = String(nombreDocumento).match(/tomo\s*(\d+)/i);
-        
         if (matchTomo) {
-          const numeroTomo = matchTomo[1]; // Extraemos solo el número (ej: "1")
+          const numeroTomo = matchTomo[1]; 
           ticketCorrecto = tickets.find(t => {
             const matchTTicket = t.nombre.match(/tomo\s*(\d+)/i);
-            return matchTTicket && matchTTicket[1] === numeroTomo; // Emparejamos "1" con "1"
+            return matchTTicket && matchTTicket[1] === numeroTomo; 
           });
         }
       }
 
-      // Intento C: Búsqueda flexible extrema
       if (!ticketCorrecto) {
         const limpiarTexto = (txt) => String(txt).toLowerCase().replace(/[^a-z0-9]/g, '').replace('comprimido', '').replace('compressed', '');
         const limpioBuscado = limpiarTexto(nombreDocumento);
@@ -164,14 +147,13 @@ function App() {
         });
       }
 
-      // Si falla todo o el archivo no tiene la data física
+      // El error que tenías saltaba justo aquí, porque ticketCorrecto existía, pero su archivoFisico no. ¡Ya está solucionado!
       if (!ticketCorrecto || !ticketCorrecto.archivoFisico) {
         return alert(`Error: No pude emparejar "${nombreDocumento}" con ningún PDF en tu carrito. Asegúrate de haber subido este tomo específico.`);
       }
 
       setMensajeEstado(`Extrayendo Pág. ${numeroPagina} de ${ticketCorrecto.nombre}...`);
       
-      // PROCESO DE CORTE
       const arrayBuffer = await ticketCorrecto.archivoFisico.arrayBuffer();
       const pdfOriginal = await PDFDocument.load(arrayBuffer);
       const pdfCortado = await PDFDocument.create();
@@ -252,16 +234,8 @@ function App() {
     document.body.removeChild(link);
   };
 
-  // =========================================================================
-  // NUEVA ESTRUCTURA VISUAL DE RENDERIZADO (DASHBOARD)
-  // =========================================================================
-  // =========================================================================
-  // NUEVA ESTRUCTURA VISUAL DE RENDERIZADO (DASHBOARD) - BLINDADA
-  // =========================================================================
   return (
     <div className="app-fondo">
-      
-      {/* ----------------- VISTA 1: DASHBOARD PRINCIPAL ----------------- */}
       {vistaActual === 'inicio' && (
         <div className="dashboard-container">
           <div>
@@ -368,7 +342,6 @@ function App() {
         </div>
       )}
 
-      {/* ----------------- VISTA 2: RESUMEN FÁCTICO ----------------- */}
       {vistaActual === 'resumen' && (
         <div className="vista-detalle">
           <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
@@ -392,7 +365,6 @@ function App() {
         </div>
       )}
 
-      {/* ----------------- VISTA 3: ELEMENTOS DE CONVICCIÓN (BLINDADA) ----------------- */}
       {vistaActual === 'elementos' && (
         <div className="vista-detalle">
           <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
@@ -405,7 +377,6 @@ function App() {
                 {Array.isArray(resultado.elementosConviccionEncontrados) && resultado.elementosConviccionEncontrados.length > 0 ? (
                   resultado.elementosConviccionEncontrados.map((item, i) => {
                     
-                    // Si por algún error la IA mandó un texto en vez de objeto, lo mostramos simple
                     if (typeof item === 'string') {
                       return (
                          <div key={i} style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
@@ -414,7 +385,6 @@ function App() {
                       );
                     }
 
-                    // Si es el objeto estructurado correcto (con botón de descarga)
                     return (
                       <div key={i} style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', borderLeft: '4px solid #3b82f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ paddingRight: '20px' }}>
@@ -446,7 +416,6 @@ function App() {
               <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginTop: '40px' }}>📋 Plan de Trabajo (Faltantes)</h2>
               <ul className="lista-diligencias">
                 {Array.isArray(resultado.elementosFaltantes) && resultado.elementosFaltantes.map((item, i) => {
-                  // Blindaje: Si la IA metió un objeto aquí por error, extraemos su texto para que no explote
                   const textoMostrar = typeof item === 'object' ? (item.descripcion || item.tipo || JSON.stringify(item)) : item;
                   
                   return (
@@ -466,7 +435,6 @@ function App() {
         </div>
       )}
 
-      {/* ----------------- VISTA 4: EXTRACTOR OCR ----------------- */}
       {vistaActual === 'ocr' && (
         <div className="vista-detalle">
           <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
