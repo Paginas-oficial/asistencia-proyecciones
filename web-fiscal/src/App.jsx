@@ -179,6 +179,9 @@ function App() {
   // =========================================================================
   // NUEVA ESTRUCTURA VISUAL DE RENDERIZADO (DASHBOARD)
   // =========================================================================
+  // =========================================================================
+  // NUEVA ESTRUCTURA VISUAL DE RENDERIZADO (DASHBOARD) - BLINDADA
+  // =========================================================================
   return (
     <div className="app-fondo">
       
@@ -190,7 +193,6 @@ function App() {
             <p className="subtitulo-central">DÉBORA</p>
           </div>
 
-          {/* TARJETA PRINCIPAL (Motor de Carga y Análisis) */}
           <div className="tarjeta-principal">
             <div className="zona-carga">
               <h2>Añadir PDFs al Caso</h2>
@@ -215,7 +217,6 @@ function App() {
               )}
             </div>
 
-            {/* Tomos en Memoria */}
             {tickets.length > 0 && (
               <div style={{ textAlign: 'left', background: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
                 <h4 style={{ margin: '0 0 10px 0', color: '#475569' }}>Tomos en Memoria ({tickets.length}):</h4>
@@ -227,7 +228,6 @@ function App() {
               </div>
             )}
 
-            {/* Controles de Análisis */}
             <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
               <button 
                 onClick={procesarExpediente} 
@@ -251,7 +251,6 @@ function App() {
               )}
             </div>
 
-            {/* Veredicto Resumido (Aparece al terminar el análisis) */}
             {resultado && (
               <div style={{ marginTop: '20px' }}>
                 <div className={`banner-veredicto ${
@@ -271,7 +270,6 @@ function App() {
             )}
           </div>
 
-          {/* TARJETAS SECUNDARIAS (Navegación) */}
           <div className="modulos-grid">
             <div className="tarjeta-modulo resumen" onClick={() => setVistaActual('resumen')}>
               <span className="icono-modulo">📝</span>
@@ -282,7 +280,7 @@ function App() {
             <div className="tarjeta-modulo elementos" onClick={() => setVistaActual('elementos')}>
               <span className="icono-modulo">🔎</span>
               <h3>Elementos de Convicción</h3>
-              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Pruebas halladas y diligencias faltantes.</p>
+              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Pruebas halladas y extracciones.</p>
             </div>
             
             <div className="tarjeta-modulo ocr" onClick={() => setVistaActual('ocr')}>
@@ -294,7 +292,6 @@ function App() {
         </div>
       )}
 
-
       {/* ----------------- VISTA 2: RESUMEN FÁCTICO ----------------- */}
       {vistaActual === 'resumen' && (
         <div className="vista-detalle">
@@ -304,11 +301,11 @@ function App() {
           {resultado ? (
             <>
               <p style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', lineHeight: '1.8', fontSize: '1.05rem', color: '#334155' }}>
-                {resultado.resumenCronologico}
+                {typeof resultado.resumenCronologico === 'object' ? JSON.stringify(resultado.resumenCronologico) : resultado.resumenCronologico}
               </p>
               <h3 style={{ marginTop: '30px' }}>Sustento Jurídico Aplicable</h3>
               <p style={{ background: '#f1f5f9', padding: '20px', borderRadius: '8px', borderLeft: '4px solid #64748b', lineHeight: '1.8' }}>
-                {resultado.sustentoJuridico}
+                {typeof resultado.sustentoJuridico === 'object' ? JSON.stringify(resultado.sustentoJuridico) : resultado.sustentoJuridico}
               </p>
             </>
           ) : (
@@ -319,38 +316,70 @@ function App() {
         </div>
       )}
 
-
-      {/* ----------------- VISTA 3: ELEMENTOS DE CONVICCIÓN ----------------- */}
+      {/* ----------------- VISTA 3: ELEMENTOS DE CONVICCIÓN (BLINDADA) ----------------- */}
       {vistaActual === 'elementos' && (
         <div className="vista-detalle">
           <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
           
           {resultado ? (
             <>
-              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>🔎 Elementos de Convicción Hallados</h2>
-              <ul style={{ background: '#f8fafc', padding: '20px 20px 20px 40px', borderRadius: '8px', borderLeft: '4px solid #3b82f6', fontSize: '1.05rem', lineHeight: '1.6' }}>
-                {Array.isArray(resultado.elementosConviccionEncontrados) 
-                  ? resultado.elementosConviccionEncontrados.map((item, i) => <li key={i} style={{marginBottom: '10px'}}>{item}</li>)
-                  : String(resultado.elementosConviccionEncontrados || '').split('\n').map((item, i) => item.trim() !== '' ? <li key={i} style={{marginBottom: '10px'}}>{item.replace(/^- /, '')}</li> : null)
-                }
-              </ul>
+              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>🔎 Pruebas Documentales Halladas</h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                
+                {Array.isArray(resultado.elementosConviccionEncontrados) && resultado.elementosConviccionEncontrados.length > 0 ? (
+                  resultado.elementosConviccionEncontrados.map((item, i) => {
+                    
+                    // Si por algún error la IA mandó un texto en vez de objeto, lo mostramos simple
+                    if (typeof item === 'string') {
+                      return (
+                         <div key={i} style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
+                           <p style={{ margin: 0 }}>{item}</p>
+                         </div>
+                      );
+                    }
 
-              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginTop: '40px' }}>📋 Plan de Trabajo (Diligencias Faltantes)</h2>
+                    // Si es el objeto estructurado correcto (con botón de descarga)
+                    return (
+                      <div key={i} style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', borderLeft: '4px solid #3b82f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ paddingRight: '20px' }}>
+                          <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '1.1rem' }}>{item.tipo || 'Documento'}</h4>
+                          <p style={{ margin: '0 0 5px 0', color: '#475569', fontSize: '0.95rem' }}>
+                            {typeof item.descripcion === 'object' ? JSON.stringify(item.descripcion) : item.descripcion}
+                          </p>
+                          <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>
+                            Ubicación: {item.tomoOrigen || 'No especificado'} - Pág {item.paginaExactaPDF || '?'}
+                          </span>
+                        </div>
+                        
+                        {item.paginaExactaPDF && (
+                          <button 
+                            onClick={() => descargarPaginaFisica(item.tomoOrigen, item.paginaExactaPDF, item.tipo || 'Documento')}
+                            style={{ minWidth: '130px', background: '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
+                          >
+                            📥 Bajar Pág. {item.paginaExactaPDF}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })
+                ) : (
+                  <p>No se encontraron elementos o ejecuta un nuevo análisis para estructurarlos.</p>
+                )}
+              </div>
+
+              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginTop: '40px' }}>📋 Plan de Trabajo (Faltantes)</h2>
               <ul className="lista-diligencias">
-                {Array.isArray(resultado.elementosFaltantes)
-                  ? resultado.elementosFaltantes.map((item, i) => (
-                      <li key={i}>
-                        <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
-                        <label htmlFor={`check-${i}`} style={{ cursor: 'pointer', fontSize: '1.05rem' }}>{item}</label>
-                      </li>
-                    ))
-                  : String(resultado.elementosFaltantes || '').split('\n').map((item, i) => item.trim() !== '' ? (
-                      <li key={i}>
-                        <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
-                        <label htmlFor={`check-${i}`} style={{ cursor: 'pointer', fontSize: '1.05rem' }}>{item.replace(/^- /, '')}</label>
-                      </li>
-                    ) : null)
-                }
+                {Array.isArray(resultado.elementosFaltantes) && resultado.elementosFaltantes.map((item, i) => {
+                  // Blindaje: Si la IA metió un objeto aquí por error, extraemos su texto para que no explote
+                  const textoMostrar = typeof item === 'object' ? (item.descripcion || item.tipo || JSON.stringify(item)) : item;
+                  
+                  return (
+                    <li key={i}>
+                      <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
+                      <label htmlFor={`check-${i}`} style={{ cursor: 'pointer', fontSize: '1.05rem' }}>{textoMostrar}</label>
+                    </li>
+                  );
+                })}
               </ul>
             </>
           ) : (
@@ -361,13 +390,11 @@ function App() {
         </div>
       )}
 
-
       {/* ----------------- VISTA 4: EXTRACTOR OCR ----------------- */}
       {vistaActual === 'ocr' && (
         <div className="vista-detalle">
           <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
           <div style={{ marginTop: '20px' }}>
-            {/* Aquí se inyecta tu componente independiente intacto */}
             <ExtractorOCR />
           </div>
         </div>
@@ -377,4 +404,4 @@ function App() {
   )
 }
 
-export default App
+export default App;
