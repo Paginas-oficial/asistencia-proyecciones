@@ -77,10 +77,8 @@ app.post('/api/analizar-tickets', async (req, res) => {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
 
-      // Extraemos los nombres reales de los archivos que llegaron en la petición
       const nombresArchivosReales = req.body.tickets.map(t => t.nombre).join("', '");
       
-      // 1. Prompt corregido y blindado
       const systemPrompt = `
 Eres un Fiscal experto en delitos de corrupción e investigaciones complejas en Perú. 
 Analiza detalladamente el texto extraído de la siguiente Carpeta Fiscal.
@@ -132,12 +130,11 @@ REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENT
 }
 `;
 
-      // 2. Modelo configurado con blindaje para JSON y versión correcta
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash", 
+        model: "gemini-3.5-flash", 
         systemInstruction: systemPrompt,
         generationConfig: {
-          responseMimeType: "application/json", // <--- BLINDAJE: FORZAR MODO JSON
+          responseMimeType: "application/json",
           maxOutputTokens: 8192, 
           temperature: 0.2, 
         }
@@ -177,17 +174,50 @@ REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENT
       console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
       
       const result = await model.generateContent(partes);
-      
-      // BLINDAJE EXTRA: LA "ASPIRADORA" DE TEXTO
       let textoCrudo = result.response.text();
       
-      const inicioJson = textoCrudo.indexOf('{');
-      const finJson = textoCrudo.lastIndexOf('}') + 1;
+      // Limpieza básica
+      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-      if (inicioJson !== -1 && finJson !== -1) {
-          textoCrudo = textoCrudo.slice(inicioJson, finJson);
-      } else {
-          throw new Error("La IA no devolvió un JSON válido.");
+      let datosParsed;
+      
+      // =================================================================
+      // PROTOCOLO DE RESCATE: EL REPARADOR DE JSON TRUNCADO
+      // =================================================================
+      try {
+          // Intento 1: Parseo normal (si la IA terminó correctamente)
+          datosParsed = JSON.parse(textoCrudo);
+      } catch (errorParse) {
+          console.log("[Servidor] ⚠️ JSON truncado detectado (Límite de tokens alcanzado). Aplicando protocolo de rescate...");
+          
+          let rescatado = false;
+          // Nos ubicamos en la última llave de cierre '}' que haya escrito la IA
+          let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
+
+          // Bucle de rescate: retrocede objeto por objeto hasta encontrar un punto estable
+          while (jsonTemp.length > 50 && !rescatado) {
+              try {
+                  // Intentamos "sellar" la estructura JSON de emergencia
+                  datosParsed = JSON.parse(jsonTemp + '], "elementosFaltantes": ["Nota del Sistema: El análisis se detuvo aquí por la inmensa cantidad de elementos en el documento. Hay más pruebas no listadas."] }');
+                  rescatado = true;
+                  console.log("[Servidor] ✅ JSON rescatado con éxito. Se salvaron los datos procesados antes del corte.");
+              } catch (e) {
+                  // Si sigue roto, cortamos el último objeto incompleto y volvemos a intentar
+                  jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
+              }
+          }
+
+          if (!rescatado) {
+              // Salvavidas final si la IA devolvió pura basura
+              console.error("[Servidor] ❌ Fallo total al rescatar. Enviando respuesta de emergencia.");
+              datosParsed = {
+                  resumenCronologico: "El análisis se interrumpió abruptamente. El PDF contiene demasiados elementos probatorios simultáneos.",
+                  sustentoJuridico: "Intente analizar el PDF en partes más pequeñas.",
+                  probabilidadExito: "Indeterminada",
+                  elementosConviccionEncontrados: [],
+                  elementosFaltantes: ["Error de sobrecarga de memoria"]
+              };
+          }
       }
 
       console.log("[Servidor] Borrando expedientes de los servidores de Google...");
@@ -199,7 +229,7 @@ REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENT
         }
       }
 
-      res.json(JSON.parse(textoCrudo));
+      res.json(datosParsed);
 
     } catch (error) {
       console.error("Error en el análisis cruzado:", error);
@@ -249,9 +279,8 @@ Reglas Estrictas de Transcripción:
  - Ignorar Ruido: Ignora encabezados, pies de página y elementos gráficos.
  - Tablas: Transcribe el contenido celda por celda, fila por fila. Usa un punto y coma (;) para separar celdas.`;
 
-      // Modelo corregido para la transcripción
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-3.5-flash",
         systemInstruction: systemPrompt
       });
 
