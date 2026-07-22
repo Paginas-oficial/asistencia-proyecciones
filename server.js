@@ -88,7 +88,12 @@ const nombresArchivosReales = req.body.tickets.map(t => t.nombre).join("', '");
       4. Logística/SEACE: Contratos, TDR, Créditos Presupuestarios, Actas de Conformidad, Reportes SEACE.
       5. Gestión Institucional: MOF, ROF, Opiniones Técnicas/Legales.
       6. Penales: Declaraciones, Pericias, Actas de Allanamiento.
-      
+      INSTRUCCIÓN CRÍTICA Y OBLIGATORIA PARA 'elementosConviccionEncontrados':
+Tu análisis en esta sección debe ser ABSOLUTAMENTE EXHAUSTIVO, FORENSE y MINUCIOSO. 
+- TIENES PROHIBIDO RESUMIR O AGRUPAR. 
+- No omitas ningún documento. Si el tomo tiene 50 documentos probatorios diferentes, debes devolver una lista con 50 objetos independientes.
+- Debes extraer TODOS Y CADA UNO de los elementos presentes: cada contrato, resolución, correo electrónico, memorando, acta de reunión, comprobante de pago, informe técnico, declaración testimonial, etc., debe ser un ítem separado.
+- Prefiere pecar de exceso de detalle que de omisión. Cada foja con valor probatorio o indicio de irregularidad es un elemento de convicción individual.
       Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin formato Markdown, con esta estructura exacta:
       {
         "resumenCronologico": "Historia de los hechos...",
