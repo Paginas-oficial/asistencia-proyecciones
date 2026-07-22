@@ -85,10 +85,13 @@ Tu tarea es realizar un INVENTARIO PROBATORIO ESTRATÉGICO, revisando el archivo
 
 --- METODOLOGÍA DE EXTRACCIÓN Y PRIORIDADES ---
 1. PRIORIDAD MÁXIMA (LA CARNE DEL CASO): Debes buscar activamente y asegurar la extracción de toda: Nota Informativa, Memorando, Resolución (Ministerial, Directoral, Jefatural, etc.), Informes y Oficios. Estos son el núcleo del caso.
-2. EXCLUSIÓN ESPECÍFICA (FILTRO DE BASURA): Tienes ESTRICTAMENTE PROHIBIDO extraer o listar:
+2. EXCLUSIÓN ESPECÍFICA (FILTRO DE BASURA PROCESAL): Tienes ESTRICTAMENTE PROHIBIDO extraer o listar:
    - Copias de DNI o documentos de identidad.
    - Correos electrónicos.
-   (Nota: Cualquier otro documento del expediente como cargos de recepción, providencias, escritos de apersonamiento y actas, SÍ deben ser extraídos para mantener la secuencia procesal).
+   - Cargos (de ingreso, recepción, derivación o notificación).
+   - Carátulas, portadas o páginas separadoras.
+   - Escritos de apersonamiento de abogados o partes.
+   (Nota: Todo el RESTO del expediente, como actas, contratos, comprobantes y providencias relevantes, SÍ debe ser extraído).
 3. DESGLOSE OBLIGATORIO DE ANEXOS (REGLA CRÍTICA): Los ANEXOS adjuntos a un documento principal DEBEN registrarse SIEMPRE como objetos independientes con su propia paginación. 
    - Está PROHIBIDO agrupar un informe u oficio con sus anexos en un solo ítem.
    - Ejemplo: Si un "Oficio N° 05" adjunta un "Contrato de Alquiler", extraes el Oficio como un elemento, y luego el Contrato como OTRO elemento separado.
