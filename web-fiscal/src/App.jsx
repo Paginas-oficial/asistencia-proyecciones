@@ -58,8 +58,8 @@ function App() {
       decision: "ARCHIVAR",
       probabilidadExito: "Baja", 
       resumenCronologico: "",
-      elementosConviccionEncontrados: [],
-      elementosFaltantes: [],
+      elementosConviccionEncontrados: [], // Arreglo de objetos
+      elementosFaltantes: [], // Arreglo de textos
       sustentoJuridico: ""
     };
     
@@ -69,47 +69,57 @@ function App() {
       for (let i = 0; i < lotes.length; i++) {
         const tomosInicio = (i * tamanoLote) + 1;
         const tomosFin = Math.min((i + 1) * tamanoLote, tickets.length);
-        setMensajeEstado(`Analizando Lote ${i + 1} de ${lotes.length} (Tomos ${tomosInicio} al ${tomosFin})...`);
+        setMensajeEstado(`Analizando Lote ${i + 1} de ${lotes.length}...`);
         
+        // Limpiamos el archivo físico temporalmente para no saturar la red
+        const lotesParaRed = lotes[i].map(t => ({ ...t, archivoFisico: undefined }));
+
         const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-tickets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tickets: lotes[i] }) 
+          body: JSON.stringify({ tickets: lotesParaRed }) 
         });
         
         const datos = await respuesta.json();
         if (!respuesta.ok) throw new Error(datos.error || `Fallo en el lote ${i + 1}`);
         
-        if (datos.resumenCronologico) {
-          veredictoFinal.resumenCronologico += (veredictoFinal.resumenCronologico ? "\n\n" : "") + datos.resumenCronologico;
-        }
-        if (datos.sustentoJuridico) {
-          veredictoFinal.sustentoJuridico += (veredictoFinal.sustentoJuridico ? "\n\n" : "") + datos.sustentoJuridico;
-        }
+        if (datos.resumenCronologico) veredictoFinal.resumenCronologico += (veredictoFinal.resumenCronologico ? "\n\n" : "") + datos.resumenCronologico;
+        if (datos.sustentoJuridico) veredictoFinal.sustentoJuridico += (veredictoFinal.sustentoJuridico ? "\n\n" : "") + datos.sustentoJuridico;
         
-        const fusionarLista = (listaActual, listaNueva) => {
-            let arregloNuevo = Array.isArray(listaNueva) ? listaNueva : (listaNueva ? String(listaNueva).split('\n') : []);
-            return [...listaActual, ...arregloNuevo.filter(item => item.trim() !== '')];
-        };
+        // --- EL ARREGLO ESTÁ AQUÍ: FUSIÓN INTELIGENTE ---
+        
+        // 1. Fusión de Elementos de Convicción (Ahora son OBJETOS, los sumamos directo sin usar trim)
+        if (Array.isArray(datos.elementosConviccionEncontrados)) {
+          veredictoFinal.elementosConviccionEncontrados = [
+            ...veredictoFinal.elementosConviccionEncontrados,
+            ...datos.elementosConviccionEncontrados
+          ];
+        }
 
-        veredictoFinal.elementosConviccionEncontrados = fusionarLista(veredictoFinal.elementosConviccionEncontrados, datos.elementosConviccionEncontrados);
-        veredictoFinal.elementosFaltantes = fusionarLista(veredictoFinal.elementosFaltantes, datos.elementosFaltantes);
+        // 2. Fusión de Elementos Faltantes (Siguen siendo TEXTOS, aseguramos que sean strings antes de usar trim)
+        if (Array.isArray(datos.elementosFaltantes)) {
+          const faltantesLimpios = datos.elementosFaltantes.filter(item => typeof item === 'string' && item.trim() !== '');
+          veredictoFinal.elementosFaltantes = [
+            ...veredictoFinal.elementosFaltantes,
+            ...faltantesLimpios
+          ];
+        }
 
+        // Evaluación de viabilidad
         const prob = String(datos.probabilidadExito).toUpperCase();
         if (prob.includes('ALTA') || prob.includes('MEDIA')) {
           indiciosDeViabilidad = true;
         }
       }
 
-      veredictoFinal.probabilidadExito = indiciosDeViabilidad ? "Media/Alta (Existen elementos de convicción suficientes)" : "Baja (Carece de elementos suficientes)";
+      veredictoFinal.probabilidadExito = indiciosDeViabilidad ? "Media/Alta (Existen elementos suficientes)" : "Baja (Carece de elementos)";
       veredictoFinal.decision = indiciosDeViabilidad ? "FORMALIZAR" : "ARCHIVAR";
 
       setResultado(veredictoFinal); 
-      setMensajeEstado('¡Análisis masivo completado con éxito!');
+      setMensajeEstado('¡Análisis completado!');
 
     } catch (error) {
       alert(`Ocurrió un problema procesando la cola: ${error.message}`);
-      setMensajeEstado('Proceso abortado.');
     } finally {
       setCargando(false);
       setTimeout(() => setMensajeEstado(''), 4000); 
