@@ -8,33 +8,26 @@ const { GoogleAIFileManager } = require("@google/generative-ai/server");
 require('dotenv').config();
 
 const app = express();
-// Pequeña mejora para Render: usar el puerto que ellos asignen o el 3000
 app.use(cors());
 const puerto = process.env.PORT || 3000; 
 
 app.use(express.json({ limit: '150mb' }));
 app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
-// Soportar hasta 150MB por archivo
-
-// Volvemos al almacenamiento directo en la memoria RAM (Más rápido, pero ten cuidado con archivos gigantes)
-// Usamos almacenamiento en disco para que Gemini pueda leer la ruta del archivo
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    // Render permite escribir en la carpeta temporal /tmp
     cb(null, '/tmp') 
   },
   filename: function (req, file, cb) {
-    // Le agregamos la fecha para que no se sobreescriban archivos con el mismo nombre
     cb(null, Date.now() + '-' + file.originalname)
   }
 });
 
 const upload = multer({ 
     storage: storage,
-    limits: { fileSize: 150 * 1024 * 1024 } // Límite de 150 MB
+    limits: { fileSize: 150 * 1024 * 1024 } 
 });
-// Inicializamos a Google UNA SOLA VEZ
+
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 
@@ -52,19 +45,18 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
   
       console.log(`-> Subiendo a Gemini: ${file.originalname}`);
       
-      // VITAL: Ignoramos al navegador y le decimos a Google que es 100% un PDF
       const uploadResult = await fileManager.uploadFile(file.path, {
         mimeType: "application/pdf", 
         displayName: file.originalname,
       });
   
-      fs.unlinkSync(file.path); // Borrar local
+      fs.unlinkSync(file.path); 
   
       res.json({
         mensaje: "Tomo almacenado",
         ticket: {
           fileUri: uploadResult.file.uri,
-          mimeType: "application/pdf", // Guardamos el formato forzado
+          mimeType: "application/pdf", 
           nombre: file.originalname,
           googleName: uploadResult.file.name 
         }
@@ -85,29 +77,41 @@ app.post('/api/analizar-tickets', async (req, res) => {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
 
-      // 1. El Prompt Maestro exacto que funcionaba en tu prueba local (MOVIDO ARRIBA)
-      const systemPrompt = `Eres un Asistente Fiscal experto en el Nuevo Código Procesal Penal peruano, especializado en delitos de corrupción de funcionarios. 
-Tu tarea es evaluar los tomos adjuntos en su conjunto y determinar técnicamente si el caso califica para una Disposición de Formalización de la Investigación Preparatoria o para una Disposición de Archivo.
+      // 1. Prompt corregido (eliminado el doble const)
+      const systemPrompt = `
+      Eres un fiscal experto de Perú. Analiza el texto extraído de la Carpeta Fiscal.
+      Busca estrictamente cualquier documento que encaje en estas categorías:
+      1. Base: Denuncias, Informes de Control, Relación de implicados.
+      2. Resoluciones: Ministeriales, Directorales, Jefaturales, Administrativas, Decretos.
+      3. Comunicaciones: Notas Informativas, Memorandos, Oficios, Hojas de envío.
+      4. Logística/SEACE: Contratos, TDR, Créditos Presupuestarios, Actas de Conformidad, Reportes SEACE.
+      5. Gestión Institucional: MOF, ROF, Opiniones Técnicas/Legales.
+      6. Penales: Declaraciones, Pericias, Actas de Allanamiento.
+      
+      Tu respuesta DEBE ser ÚNICAMENTE un objeto JSON válido, sin formato Markdown, con esta estructura exacta:
+      {
+        "resumenCronologico": "Historia de los hechos...",
+        "sustentoJuridico": "Análisis legal...",
+        "probabilidadExito": "Alta, Media o Baja",
+        "elementosConviccionEncontrados": [
+          {
+            "tipo": "Nombre del documento (ej. Nota Informativa N° 097-2019)",
+            "descripcion": "Resumen de lo que dice y su relevancia penal",
+            "tomoOrigen": "Nombre exacto del archivo pdf de donde lo sacaste",
+            "paginaExactaPDF": 45
+          }
+        ],
+        "elementosFaltantes": ["Diligencia 1", "Diligencia 2"]
+      }
+      `;
 
-Debes responder ÚNICAMENTE con un objeto JSON válido que tenga EXACTAMENTE esta estructura:
-{
-  "decision": "FORMALIZAR" o "ARCHIVAR",
-  "probabilidadExito": "Alta" o "Media" o "Baja",
-  "resumenCronologico": "Resumen detallado de los hechos fácticos",
-  "analisisTipicidad": "Evaluación de la tipicidad objetiva y subjetiva",
-  "elementosConviccionEncontrados": ["indicio 1", "indicio 2"],
-  "elementosFaltantes": ["diligencia 1", "diligencia 2"],
-  "sustentoJuridico": "Explicación legal dogmática y jurisprudencial"
-}
-
-REGLAS DE ORO:
-1. CITACIÓN EXACTA: Cada dato fáctico o indicio DEBE incluir obligatoriamente el tomo y la página.
-2. FORMATO: Tu respuesta debe ser un JSON puro, usa solo comillas simples (') dentro de los textos.`;
-
-      // 2. Configuramos el modelo de manera limpia (DESPUÉS DEL PROMPT)
+      // 2. Modelo configurado con blindaje para JSON
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash", // Asegúrate de que el modelo sea el correcto (gemini-1.5-flash o gemini-2.5-flash)
-        systemInstruction: systemPrompt
+        model: "gemini-2.5-flash",
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          responseMimeType: "application/json" // OBLIGA a devolver JSON puro
+        }
       });
 
       console.log("[Servidor] Verificando estado de los PDFs en la nube...");
@@ -130,7 +134,6 @@ REGLAS DE ORO:
         }
       }
 
-      // 3. EL GRAN FIX: Colocamos el TEXTO y los ARCHIVOS en LA MISMA matriz obligatoriamente
       const partes = [ systemPrompt ]; 
 
       for (const ticket of tickets) {
@@ -144,11 +147,10 @@ REGLAS DE ORO:
 
       console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
       
-      // Ahora la IA recibe las instrucciones claras + los archivos, evitando el Error 400
       const result = await model.generateContent(partes);
       let text = result.response.text();
 
-      // 4. Limpiamos manualmente posibles residuos de código que rompan el JSON
+      // Limpiamos manualmente posibles residuos por si acaso
       text = text.replace(/```json/g, "").replace(/```/g, "").trim();
 
       console.log("[Servidor] Borrando expedientes de los servidores de Google...");
@@ -183,15 +185,13 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
       console.log(`-> [OCR] Iniciando Transcripción para: ${file.originalname}`);
       console.log(`-> [OCR] Orden: "${instruccion}"`);
 
-      // 1. Subir el archivo al gestor de Google
       const uploadResult = await fileManager.uploadFile(file.path, {
-          mimeType: file.mimetype, // Permite PDFs o Imágenes sueltas
+          mimeType: file.mimetype, 
           displayName: file.originalname,
       });
 
-      fs.unlinkSync(file.path); // Borrar el archivo temporal del servidor
+      fs.unlinkSync(file.path); 
 
-      // 2. Tu Prompt Maestro de Ingeniería
       const systemPrompt = `Rol: Actúa como un Asistente de Digitalización y Transcripción Documental. Tu única función es procesar los archivos PDF o imágenes escaneadas que te proporciono y convertirlos en texto plano con precisión absoluta.
 Objetivo Principal: Transcribir exacta y literalmente el contenido de los documentos según mis instrucciones específicas, entregando un texto limpio, sin formato, listo para ser copiado y pegado en Microsoft Word.
 
@@ -212,13 +212,11 @@ Reglas Estrictas de Transcripción:
  - Ignorar Ruido: Ignora encabezados, pies de página y elementos gráficos.
  - Tablas: Transcribe el contenido celda por celda, fila por fila. Usa un punto y coma (;) para separar celdas.`;
 
-      // Configuramos el modelo sin forzar JSON, porque queremos Texto Puro
       const model = genAI.getGenerativeModel({
         model: "gemini-2.5-flash",
         systemInstruction: systemPrompt
-    });
+      });
 
-      // 3. Seguro de Procesamiento (Esperar a Google)
       let archivoListo = false;
       let intentos = 0;
       while (!archivoListo && intentos < 20) {
@@ -233,7 +231,6 @@ Reglas Estrictas de Transcripción:
           }
       }
 
-      // 4. Ejecutamos la orden enviando el Archivo + La Instrucción del Usuario
       const result = await model.generateContent([
           { fileData: { fileUri: uploadResult.file.uri, mimeType: uploadResult.file.mimeType } },
           { text: instruccion }
@@ -241,7 +238,6 @@ Reglas Estrictas de Transcripción:
 
       const textoExtraido = result.response.text();
 
-      // 5. Borrado de Confidencialidad
       try {
           await fileManager.deleteFile(uploadResult.file.name);
           console.log(`-> [OCR] Borrado exitoso y transcripción terminada.`);
@@ -249,7 +245,6 @@ Reglas Estrictas de Transcripción:
           console.error("Error borrando archivo:", e);
       }
 
-      // Devolvemos el texto limpio al Frontend
       res.json({ texto: textoExtraido });
 
   } catch (error) {
@@ -268,5 +263,4 @@ const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
 });
 
-// Aumentamos el tiempo de espera por si los PDFs son gigantes
 servidorConfigurado.timeout = 10 * 60 * 1000;
