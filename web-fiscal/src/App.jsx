@@ -118,10 +118,19 @@ function App() {
     }
   };
 
-  const descargarPaginaFisica = async (nombreDocumento, numeroPagina, tipoElemento) => {
+  // NUEVA FUNCIÓN: Cortar y Descargar RANGO de Páginas
+  const descargarRangoFisico = async (nombreDocumento, paginaInicio, paginaFin, tipoElemento) => {
     try {
       if (!tickets || tickets.length === 0) {
-        return alert("⚠️ El carrito está vacío. Recuerda que NO debes recargar la página ni darle a 'Limpiar' antes de descargar las hojas. Por favor, sube los tomos al Panel Principal de nuevo.");
+        return alert("⚠️ El carrito está vacío. Sube los tomos al Panel Principal de nuevo.");
+      }
+
+      // Validamos y convertimos las páginas a números
+      const inicio = parseInt(paginaInicio, 10);
+      const fin = parseInt(paginaFin || paginaInicio, 10); 
+
+      if (isNaN(inicio) || isNaN(fin) || inicio > fin) {
+        return alert(`Rango de páginas inválido: ${paginaInicio} al ${paginaFin}`);
       }
 
       let ticketCorrecto = tickets.find(t => t.nombre.trim() === String(nombreDocumento).trim());
@@ -147,24 +156,32 @@ function App() {
         });
       }
 
-      // El error que tenías saltaba justo aquí, porque ticketCorrecto existía, pero su archivoFisico no. ¡Ya está solucionado!
       if (!ticketCorrecto || !ticketCorrecto.archivoFisico) {
         return alert(`Error: No pude emparejar "${nombreDocumento}" con ningún PDF en tu carrito. Asegúrate de haber subido este tomo específico.`);
       }
 
-      setMensajeEstado(`Extrayendo Pág. ${numeroPagina} de ${ticketCorrecto.nombre}...`);
+      setMensajeEstado(`Extrayendo Págs. ${inicio} al ${fin} de ${ticketCorrecto.nombre}...`);
       
       const arrayBuffer = await ticketCorrecto.archivoFisico.arrayBuffer();
       const pdfOriginal = await PDFDocument.load(arrayBuffer);
       const pdfCortado = await PDFDocument.create();
       
-      const indicePagina = parseInt(numeroPagina, 10) - 1; 
-      if (indicePagina < 0 || indicePagina >= pdfOriginal.getPageCount()) {
-          throw new Error("El número de página excede el total del PDF original.");
+      const indiceInicio = inicio - 1; 
+      const indiceFin = fin - 1;
+
+      if (indiceInicio < 0 || indiceFin >= pdfOriginal.getPageCount()) {
+          throw new Error("El rango de páginas excede el total del PDF original.");
       }
 
-      const [paginaCopiada] = await pdfCortado.copyPages(pdfOriginal, [indicePagina]);
-      pdfCortado.addPage(paginaCopiada);
+      // Creamos un array con todos los índices de páginas a extraer
+      const paginasAExtraer = [];
+      for (let i = indiceInicio; i <= indiceFin; i++) {
+        paginasAExtraer.push(i);
+      }
+
+      // Copiamos todas las páginas del rango de golpe
+      const paginasCopiadas = await pdfCortado.copyPages(pdfOriginal, paginasAExtraer);
+      paginasCopiadas.forEach((pagina) => pdfCortado.addPage(pagina));
       
       const pdfBytes = await pdfCortado.save();
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
@@ -172,14 +189,15 @@ function App() {
       
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${String(tipoElemento).replace(/[^a-zA-Z0-9]/g, '_')}_Pag${numeroPagina}.pdf`;
+      // Nombre del archivo reflejando el rango
+      link.download = `${String(tipoElemento).replace(/[^a-zA-Z0-9]/g, '_')}_Pag${inicio}_a_${fin}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
 
       setMensajeEstado('');
     } catch (error) {
-      alert(`Error al extraer página: ${error.message}`);
+      alert(`Error al extraer rango de páginas: ${error.message}`);
       setMensajeEstado('');
     }
   };
@@ -393,16 +411,18 @@ function App() {
                             {typeof item.descripcion === 'object' ? JSON.stringify(item.descripcion) : item.descripcion}
                           </p>
                           <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>
-                            Ubicación: {item.tomoOrigen || 'No especificado'} - Pág {item.paginaExactaPDF || '?'}
+                            {/* AQUÍ ESTÁ EL CAMBIO PARA MOSTRAR RANGOS EN LA TARJETA */}
+                            Ubicación: {item.tomoOrigen || 'No especificado'} - Págs {item.paginaInicio || item.paginaExactaPDF || '?'} al {item.paginaFin || item.paginaInicio || item.paginaExactaPDF || '?'}
                           </span>
                         </div>
                         
-                        {item.paginaExactaPDF && (
+                        {/* Mantenemos soporte retroactivo por si hay análisis cacheados que usen paginaExactaPDF */}
+                        {(item.paginaInicio || item.paginaExactaPDF) && (
                           <button 
-                            onClick={() => descargarPaginaFisica(item.tomoOrigen, item.paginaExactaPDF, item.tipo || 'Documento')}
+                            onClick={() => descargarRangoFisico(item.tomoOrigen, item.paginaInicio || item.paginaExactaPDF, item.paginaFin || item.paginaInicio || item.paginaExactaPDF, item.tipo || 'Documento')}
                             style={{ minWidth: '130px', background: '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
                           >
-                            📥 Bajar Pág. {item.paginaExactaPDF}
+                            📥 Bajar Págs. {item.paginaInicio || item.paginaExactaPDF}-{item.paginaFin || item.paginaInicio || item.paginaExactaPDF}
                           </button>
                         )}
                       </div>
