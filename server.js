@@ -107,7 +107,7 @@ app.post('/api/analizar-tickets', async (req, res) => {
 
       // 2. Modelo configurado con blindaje para JSON
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-pro",
+        model: "gemini-3.1-pro",
         systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: "application/json" // OBLIGA a devolver JSON puro
@@ -213,7 +213,7 @@ Reglas Estrictas de Transcripción:
  - Tablas: Transcribe el contenido celda por celda, fila por fila. Usa un punto y coma (;) para separar celdas.`;
 
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-pro",
+        model: "gemini-3.1-pro",
         systemInstruction: systemPrompt
       });
 
