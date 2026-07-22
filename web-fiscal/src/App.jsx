@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 import ExtractorOCR from './ExtractorOCR';
+import { PDFDocument } from 'pdf-lib';
 
 function App() {
   // Lógica de datos (Intacta)
@@ -123,6 +124,52 @@ function App() {
     } finally {
       setCargando(false);
       setTimeout(() => setMensajeEstado(''), 4000); 
+    }
+  };
+  // NUEVA FUNCIÓN: Cortar y Descargar PDF
+  const descargarPaginaFisica = async (nombreDocumento, numeroPagina, tipoElemento) => {
+    try {
+      // 1. Buscamos el archivo original en la memoria de los tickets
+      const ticketCorrecto = tickets.find(t => t.nombre === nombreDocumento);
+      if (!ticketCorrecto || !ticketCorrecto.archivoFisico) {
+        return alert('El documento original ya no está en la memoria. Vuelve a subirlo e intenta de nuevo.');
+      }
+
+      setMensajeEstado(`Extrayendo Pág. ${numeroPagina}...`);
+      
+      // 2. Cargamos el PDF en pdf-lib
+      const arrayBuffer = await ticketCorrecto.archivoFisico.arrayBuffer();
+      const pdfOriginal = await PDFDocument.load(arrayBuffer);
+      
+      // 3. Creamos un PDF nuevo y en blanco
+      const pdfCortado = await PDFDocument.create();
+      
+      // 4. Copiamos la página exacta (OJO: pdf-lib empieza a contar en 0)
+      const indicePagina = parseInt(numeroPagina, 10) - 1; 
+      if (indicePagina < 0 || indicePagina >= pdfOriginal.getPageCount()) {
+          throw new Error("El número de página excede el total del documento.");
+      }
+
+      const [paginaCopiada] = await pdfCortado.copyPages(pdfOriginal, [indicePagina]);
+      pdfCortado.addPage(paginaCopiada);
+      
+      // 5. Generamos el archivo descargable
+      const pdfBytes = await pdfCortado.save();
+      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      
+      // 6. Forzamos la descarga en el navegador
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${tipoElemento.replace(/[^a-z0-9]/gi, '_').toLowerCase()}_Pag${numeroPagina}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      setMensajeEstado('');
+    } catch (error) {
+      alert(`Error al extraer página: ${error.message}`);
+      setMensajeEstado('');
     }
   };
 
