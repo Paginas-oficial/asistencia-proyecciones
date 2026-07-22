@@ -1,11 +1,16 @@
 import { useState } from 'react'
 import './App.css'
 import ExtractorOCR from './ExtractorOCR';
+
 function App() {
-  const [tickets, setTickets] = useState([]); // Aquí guardaremos los tickets de los tomos subidos
+  // Lógica de datos (Intacta)
+  const [tickets, setTickets] = useState([]); 
   const [cargando, setCargando] = useState(false);
   const [mensajeEstado, setMensajeEstado] = useState('');
   const [resultado, setResultado] = useState(null);
+
+  // NUEVO LÓGICA VISUAL: Controla en qué "pantalla" estamos
+  const [vistaActual, setVistaActual] = useState('inicio'); // 'inicio', 'resumen', 'elementos', 'ocr'
 
   const subirTomo = async (e) => {
     const archivo = e.target.files[0];
@@ -18,7 +23,6 @@ function App() {
     formData.append('documentoPdf', archivo);
 
     try {
-      // Mandamos el archivo a la Ruta 1 de nuestro servidor
       const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/subir-tomo', {
         method: 'POST',
         body: formData,
@@ -27,35 +31,31 @@ function App() {
       
       if (!respuesta.ok) throw new Error(datos.error || 'Error al subir');
       
-      // Si todo sale bien, guardamos el "Ticket" en nuestro carrito
       setTickets(prevTickets => [...prevTickets, datos.ticket]);
     } catch (error) {
       alert(`Error al subir tomo: ${error.message}`);
     } finally {
       setCargando(false);
       setMensajeEstado('');
-      e.target.value = null; // Reseteamos el botón por si quiere subir otro
+      e.target.value = null; 
     }
   };
 
-  // 3. Función para mandar a analizar todos los tickets juntos
-  // 3. Función para mandar a analizar usando una SUPER COLA (Lotes de 3)
+  // Función de Super Cola (Intacta)
   const procesarExpediente = async () => {
     if (tickets.length === 0) return alert('Agrega al menos un tomo al carrito.');
     
     setCargando(true);
-    setResultado(null); // Limpiamos la pantalla por si había un análisis anterior
+    setResultado(null); 
     
-    // --- MAGIA 1: FRACCIONAR EN LOTES DE 3 ---
     const tamanoLote = 3;
     const lotes = [];
     for (let i = 0; i < tickets.length; i += tamanoLote) {
       lotes.push(tickets.slice(i, i + tamanoLote));
     }
 
-    // --- MAGIA 2: EL ENSAMBLADOR MAESTRO ---
     let veredictoFinal = {
-      decision: "ARCHIVAR", // Por defecto
+      decision: "ARCHIVAR",
       probabilidadExito: "Baja", 
       resumenCronologico: "",
       elementosConviccionEncontrados: [],
@@ -63,16 +63,14 @@ function App() {
       sustentoJuridico: ""
     };
     
-    let indiciosDeViabilidad = false; // Nos ayudará a decidir si el caso es fuerte
+    let indiciosDeViabilidad = false; 
 
     try {
-      // --- MAGIA 3: EL BUCLE (PROCESAR LOTE POR LOTE) ---
       for (let i = 0; i < lotes.length; i++) {
         const tomosInicio = (i * tamanoLote) + 1;
         const tomosFin = Math.min((i + 1) * tamanoLote, tickets.length);
         setMensajeEstado(`Analizando Lote ${i + 1} de ${lotes.length} (Tomos ${tomosInicio} al ${tomosFin})...`);
         
-        // Enviamos solo este lote al servidor
         const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-tickets', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -82,8 +80,6 @@ function App() {
         const datos = await respuesta.json();
         if (!respuesta.ok) throw new Error(datos.error || `Fallo en el lote ${i + 1}`);
         
-        // --- FUSIONAR RESULTADOS ---
-        // Pegamos los textos largos separándolos por un doble salto de línea
         if (datos.resumenCronologico) {
           veredictoFinal.resumenCronologico += (veredictoFinal.resumenCronologico ? "\n\n" : "") + datos.resumenCronologico;
         }
@@ -91,7 +87,6 @@ function App() {
           veredictoFinal.sustentoJuridico += (veredictoFinal.sustentoJuridico ? "\n\n" : "") + datos.sustentoJuridico;
         }
         
-        // Función auxiliar para juntar las listas (incluso si la IA devuelve texto en vez de Array)
         const fusionarLista = (listaActual, listaNueva) => {
             let arregloNuevo = Array.isArray(listaNueva) ? listaNueva : (listaNueva ? String(listaNueva).split('\n') : []);
             return [...listaActual, ...arregloNuevo.filter(item => item.trim() !== '')];
@@ -100,18 +95,16 @@ function App() {
         veredictoFinal.elementosConviccionEncontrados = fusionarLista(veredictoFinal.elementosConviccionEncontrados, datos.elementosConviccionEncontrados);
         veredictoFinal.elementosFaltantes = fusionarLista(veredictoFinal.elementosFaltantes, datos.elementosFaltantes);
 
-        // Si en ALGÚN lote la IA dice que hay Alta o Media probabilidad, marcamos el caso como viable
         const prob = String(datos.probabilidadExito).toUpperCase();
         if (prob.includes('ALTA') || prob.includes('MEDIA')) {
           indiciosDeViabilidad = true;
         }
       }
 
-      // --- MAGIA 4: ENTREGAR EL REPORTE FINAL ---
       veredictoFinal.probabilidadExito = indiciosDeViabilidad ? "Media/Alta (Existen elementos de convicción suficientes)" : "Baja (Carece de elementos suficientes)";
       veredictoFinal.decision = indiciosDeViabilidad ? "FORMALIZAR" : "ARCHIVAR";
 
-      setResultado(veredictoFinal); // Imprimimos en pantalla
+      setResultado(veredictoFinal); 
       setMensajeEstado('¡Análisis masivo completado con éxito!');
 
     } catch (error) {
@@ -119,31 +112,27 @@ function App() {
       setMensajeEstado('Proceso abortado.');
     } finally {
       setCargando(false);
-      // Borramos el mensaje de éxito después de 4 segundos
       setTimeout(() => setMensajeEstado(''), 4000); 
     }
   };
 
-  // 4. Función para limpiar y empezar un nuevo caso
   const limpiarCarrito = () => {
     setTickets([]);
     setResultado(null);
   };
+
   const exportarAWord = () => {
     if (!resultado) return;
 
-    // Función auxiliar para leer las listas correctamente para Word
     const formatearLista = (datos) => {
       if (Array.isArray(datos)) return datos.map(item => `<li>${item}</li>`).join('');
       if (typeof datos === 'string') return datos.split('\n').filter(i => i.trim()).map(item => `<li>${item.replace(/^- /, '')}</li>`).join('');
       return '<li>No hay datos</li>';
     };
 
-    // CORREGIDO: Usando los nombres exactos que envía la IA desde el servidor
     const elementosHTML = formatearLista(resultado.elementosConviccionEncontrados);
     const diligenciasHTML = formatearLista(resultado.elementosFaltantes);
 
-    // Plantilla HTML que Word entiende perfectamente
     const contenidoHTML = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head><meta charset='utf-8'><title>Proyección Fiscal</title></head>
@@ -167,7 +156,6 @@ function App() {
       </html>
     `;
 
-    // Truco para descargar el archivo
     const blob = new Blob(['\ufeff', contenidoHTML], { type: 'application/msword' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -177,181 +165,204 @@ function App() {
     link.click();
     document.body.removeChild(link);
   };
+
+  // =========================================================================
+  // NUEVA ESTRUCTURA VISUAL DE RENDERIZADO (DASHBOARD)
+  // =========================================================================
   return (
-    <div className="contenedor-principal">
-      <aside className="sidebar">
-        <h2>PROYECCION FISCAL</h2>
-        <p>DEBORA</p>
-        <hr style={{ opacity: 0.2 }} />
-        {/* === ZONA DEL CARRITO DE TOMOS === */}
-        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-          
-          {/* Botón para subir un tomo */}
+    <div className="app-fondo">
+      
+      {/* ----------------- VISTA 1: DASHBOARD PRINCIPAL ----------------- */}
+      {vistaActual === 'inicio' && (
+        <div className="dashboard-container">
           <div>
-            <input 
-              type="file" 
-              id="file-upload" 
-              accept=".pdf" 
-              onChange={subirTomo} 
-              disabled={cargando} 
-              style={{ display: 'none' }} 
-            />
-            <label htmlFor="file-upload" style={{
-              background: 'transparent', border: '1px solid #94a3b8', color: '#f8fafc',
-              padding: '10px', borderRadius: '6px', cursor: cargando ? 'not-allowed' : 'pointer',
-              display: 'block', textAlign: 'center', fontSize: '0.9rem'
-            }}>
-              {cargando && mensajeEstado.includes('Subiendo') ? '⏳ Cargando...' : '📄 + Agregar Tomo'}
-            </label>
+            <h1 className="titulo-central">PROYECCIÓN FISCAL</h1>
+            <p className="subtitulo-central">DÉBORA</p>
           </div>
 
-          {/* Lista visual de tomos subidos (El Carrito) */}
-          {tickets.length > 0 && (
-            <div style={{ background: '#1e293b', padding: '10px', borderRadius: '6px' }}>
-              <p style={{ margin: '0 0 10px 0', fontSize: '0.85rem', color: '#cbd5e1', borderBottom: '1px solid #334155', paddingBottom: '5px' }}>
-                Tomos en Memoria ({tickets.length}):
-              </p>
-              <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: '0.8rem', color: '#10b981' }}>
-                {tickets.map((t, i) => (
-                  <li key={i} style={{ marginBottom: '5px', wordBreak: 'break-all' }}>✅ {t.nombre}</li>
-                ))}
-              </ul>
+          {/* TARJETA PRINCIPAL (Motor de Carga y Análisis) */}
+          <div className="tarjeta-principal">
+            <div className="zona-carga">
+              <h2>Añadir PDFs al Caso</h2>
+              <input 
+                type="file" 
+                id="file-upload" 
+                accept=".pdf" 
+                onChange={subirTomo} 
+                disabled={cargando} 
+                style={{ display: 'none' }} 
+              />
+              <label htmlFor="file-upload" style={{
+                background: '#3b82f6', color: 'white', padding: '12px 24px', 
+                borderRadius: '6px', cursor: cargando ? 'not-allowed' : 'pointer',
+                display: 'inline-block', fontWeight: 'bold'
+              }}>
+                {cargando && mensajeEstado.includes('Subiendo') ? '⏳ Cargando Tomo...' : '📄 Seleccionar Archivo'}
+              </label>
+
+              {mensajeEstado && (
+                <p style={{ color: '#f59e0b', fontWeight: 'bold', marginTop: '15px' }}>{mensajeEstado}</p>
+              )}
             </div>
-          )}
 
-          {/* Botón Principal de Análisis */}
-          <button 
-            onClick={procesarExpediente} 
-            disabled={cargando || tickets.length === 0} 
-            style={{
-              background: tickets.length > 0 && !cargando ? '#3b82f6' : '#475569',
-              color: 'white', border: 'none', padding: '12px', borderRadius: '6px',
-              fontWeight: 'bold', cursor: tickets.length > 0 && !cargando ? 'pointer' : 'not-allowed'
-            }}
-          >
-            {cargando && mensajeEstado.includes('Analizando') ? '🧠 Analizando Caso...' : '⚖️ Analizar Caso Completo'}
-          </button>
-          
-          {/* Botón para Limpiar */}
-          {tickets.length > 0 && (
-             <button onClick={limpiarCarrito} disabled={cargando} style={{
-               background: 'transparent', color: '#ef4444', border: 'none',
-               cursor: 'pointer', fontSize: '0.85rem', marginTop: '10px'
-             }}>
-               🗑️ Limpiar y empezar de nuevo
-             </button>
-          )}
+            {/* Tomos en Memoria */}
+            {tickets.length > 0 && (
+              <div style={{ textAlign: 'left', background: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
+                <h4 style={{ margin: '0 0 10px 0', color: '#475569' }}>Tomos en Memoria ({tickets.length}):</h4>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, color: '#10b981', fontSize: '0.9rem' }}>
+                  {tickets.map((t, i) => (
+                    <li key={i}>✅ {t.nombre}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
-          {/* Mensajes de estado para Débora */}
-          {mensajeEstado && (
-            <div style={{ fontSize: '0.8rem', color: '#fbbf24', textAlign: 'center', marginTop: '10px' }}>
-              {mensajeEstado}
+            {/* Controles de Análisis */}
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
+              <button 
+                onClick={procesarExpediente} 
+                disabled={cargando || tickets.length === 0} 
+                style={{
+                  background: tickets.length > 0 && !cargando ? '#1e293b' : '#cbd5e1',
+                  color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px',
+                  fontWeight: 'bold', cursor: tickets.length > 0 && !cargando ? 'pointer' : 'not-allowed'
+                }}
+              >
+                {cargando && mensajeEstado.includes('Analizando') ? '🧠 Procesando Lotes...' : '⚖️ Ejecutar Análisis Cruzado'}
+              </button>
+
+              {tickets.length > 0 && !cargando && (
+                <button onClick={limpiarCarrito} style={{
+                  background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', 
+                  padding: '12px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
+                }}>
+                  🗑️ Limpiar
+                </button>
+              )}
             </div>
-          )}
-        </div>
-      </aside>
 
-      <main className="contenido">
-        {resultado ? (
-          <div className="tarjeta-resultado">
-            
-            {/* Cabecera con Botón de Exportar */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
-              <h1 style={{ margin: 0, color: '#1e293b' }}>Análisis del Caso</h1>
-              <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
-                <span className="badge-probabilidad" style={{ backgroundColor: '#dcfce7', color: '#166534', fontSize: '1rem' }}>
-                  Probabilidad: {resultado.probabilidadExito}
-                </span>
-                <button onClick={exportarAWord} className="boton-exportar">
-                  💾 Exportar a Word
+            {/* Veredicto Resumido (Aparece al terminar el análisis) */}
+            {resultado && (
+              <div style={{ marginTop: '20px' }}>
+                <div className={`banner-veredicto ${
+                  String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
+                  String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
+                  ? 'banner-formalizar' : 'banner-archivar'
+                }`}>
+                  {String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
+                  String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
+                    ? '⚖️ SUGERENCIA: FORMALIZAR INVESTIGACIÓN' 
+                    : '🗂️ SUGERENCIA: ARCHIVO PRELIMINAR'}
+                </div>
+                <button onClick={exportarAWord} className="boton-exportar" style={{ margin: '0 auto' }}>
+                  💾 Exportar Informe Completo a Word
                 </button>
               </div>
-            </div>
+            )}
+          </div>
 
-            {/* Lógica del Veredicto Automático */}
-            <div className={`banner-veredicto ${
-              String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
-              String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
-              ? 'banner-formalizar' : 'banner-archivar'
-            }`}>
-              {String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
-               String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
-                ? '⚖️ SUGERENCIA: FORMALIZAR INVESTIGACIÓN PREPARATORIA' 
-                : '🗂️ SUGERENCIA: ARCHIVO PRELIMINAR'}
+          {/* TARJETAS SECUNDARIAS (Navegación) */}
+          <div className="modulos-grid">
+            <div className="tarjeta-modulo resumen" onClick={() => setVistaActual('resumen')}>
+              <span className="icono-modulo">📝</span>
+              <h3>Resumen Fáctico</h3>
+              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Cronología de los hechos del caso.</p>
             </div>
             
-            <h3>Resumen Fáctico</h3>
+            <div className="tarjeta-modulo elementos" onClick={() => setVistaActual('elementos')}>
+              <span className="icono-modulo">🔎</span>
+              <h3>Elementos de Convicción</h3>
+              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Pruebas halladas y diligencias faltantes.</p>
+            </div>
             
-            {/* Párrafo del resumen */}
-            <p style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', border: '1px solid #e2e8f0', lineHeight: '1.7' }}>
-              {resultado.resumenCronologico}
+            <div className="tarjeta-modulo ocr" onClick={() => setVistaActual('ocr')}>
+              <span className="icono-modulo">🖨️</span>
+              <h3>Extractor OCR</h3>
+              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Digitaliza fojas específicas a texto plano.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+
+      {/* ----------------- VISTA 2: RESUMEN FÁCTICO ----------------- */}
+      {vistaActual === 'resumen' && (
+        <div className="vista-detalle">
+          <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
+          <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>📝 Resumen Fáctico y Sustento Jurídico</h2>
+          
+          {resultado ? (
+            <>
+              <p style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', lineHeight: '1.8', fontSize: '1.05rem', color: '#334155' }}>
+                {resultado.resumenCronologico}
+              </p>
+              <h3 style={{ marginTop: '30px' }}>Sustento Jurídico Aplicable</h3>
+              <p style={{ background: '#f1f5f9', padding: '20px', borderRadius: '8px', borderLeft: '4px solid #64748b', lineHeight: '1.8' }}>
+                {resultado.sustentoJuridico}
+              </p>
+            </>
+          ) : (
+            <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>
+              Aún no hay un análisis. Ve al Panel Principal, añade los tomos y ejecuta el Análisis Cruzado.
             </p>
+          )}
+        </div>
+      )}
 
-            {/* Línea de Tiempo Horizontal */}
-            <h4 style={{ color: '#475569', marginTop: '35px', marginBottom: '0px' }}>Línea de Tiempo del Caso:</h4>
-            
-            <div className="cajon-scroll-horizontal">
-              <ul className="linea-tiempo">
-                {resultado.resumenCronologico
-                  .split(/\.\s+(?=[A-ZÁÉÍÓÚ])/)
-                  .map(oracion => oracion.trim())
-                  .filter(oracion => oracion.length > 20)
-                  .map((hito, i) => (
-                    <li key={i} className="linea-tiempo-item">
-                      {hito}{!hito.endsWith('.') && '.'}
-                    </li>
-                  ))
+
+      {/* ----------------- VISTA 3: ELEMENTOS DE CONVICCIÓN ----------------- */}
+      {vistaActual === 'elementos' && (
+        <div className="vista-detalle">
+          <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
+          
+          {resultado ? (
+            <>
+              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>🔎 Elementos de Convicción Hallados</h2>
+              <ul style={{ background: '#f8fafc', padding: '20px 20px 20px 40px', borderRadius: '8px', borderLeft: '4px solid #3b82f6', fontSize: '1.05rem', lineHeight: '1.6' }}>
+                {Array.isArray(resultado.elementosConviccionEncontrados) 
+                  ? resultado.elementosConviccionEncontrados.map((item, i) => <li key={i} style={{marginBottom: '10px'}}>{item}</li>)
+                  : String(resultado.elementosConviccionEncontrados || '').split('\n').map((item, i) => item.trim() !== '' ? <li key={i} style={{marginBottom: '10px'}}>{item.replace(/^- /, '')}</li> : null)
                 }
               </ul>
-            </div>
-            {/* Sección de Elementos de Convicción */}
-            <h3 style={{ marginTop: '35px' }}>Elementos de Convicción Hallados</h3>
-            <ul style={{ background: '#f8fafc', padding: '20px 20px 20px 40px', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
-              {Array.isArray(resultado.elementosConviccionEncontrados) 
-                ? resultado.elementosConviccionEncontrados.map((item, i) => <li key={i} style={{marginBottom: '10px'}}>{item}</li>)
-                : String(resultado.elementosConviccionEncontrados || 'No se detectaron elementos.').split('\n').map((item, i) => item.trim() !== '' && item !== 'undefined' ? <li key={i} style={{marginBottom: '10px'}}>{item.replace(/^- /, '')}</li> : null)
-              }
-            </ul>
 
-            {/* Sección de Diligencias Faltantes */}
-            <h3 style={{ marginTop: '35px' }}>Diligencias Faltantes (Plan de Trabajo)</h3>
-            <ul className="lista-diligencias">
-              {Array.isArray(resultado.elementosFaltantes)
-                ? resultado.elementosFaltantes.map((item, i) => (
-                    <li key={i}>
-                      <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
-                      <label htmlFor={`check-${i}`} style={{ cursor: 'pointer' }}>{item}</label>
-                    </li>
-                  ))
-                : String(resultado.elementosFaltantes || 'No se sugirieron diligencias adicionales.').split('\n').map((item, i) => item.trim() !== '' && item !== 'undefined' ? (
-                    <li key={i}>
-                      <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
-                      <label htmlFor={`check-${i}`} style={{ cursor: 'pointer' }}>{item.replace(/^- /, '')}</label>
-                    </li>
-                  ) : null)
-              }
-            </ul>
-
-            <h3>Sustento Jurídico</h3>
-            <p style={{ background: '#f1f5f9', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #64748b' }}>
-              {resultado.sustentoJuridico}
+              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginTop: '40px' }}>📋 Plan de Trabajo (Diligencias Faltantes)</h2>
+              <ul className="lista-diligencias">
+                {Array.isArray(resultado.elementosFaltantes)
+                  ? resultado.elementosFaltantes.map((item, i) => (
+                      <li key={i}>
+                        <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
+                        <label htmlFor={`check-${i}`} style={{ cursor: 'pointer', fontSize: '1.05rem' }}>{item}</label>
+                      </li>
+                    ))
+                  : String(resultado.elementosFaltantes || '').split('\n').map((item, i) => item.trim() !== '' ? (
+                      <li key={i}>
+                        <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
+                        <label htmlFor={`check-${i}`} style={{ cursor: 'pointer', fontSize: '1.05rem' }}>{item.replace(/^- /, '')}</label>
+                      </li>
+                    ) : null)
+                }
+              </ul>
+            </>
+          ) : (
+             <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>
+              Aún no hay un análisis. Ve al Panel Principal, añade los tomos y ejecuta el Análisis Cruzado.
             </p>
-          </div>
-        ) : (
-          <div className="tarjeta-resultado" style={{ textAlign: 'center', padding: '80px 20px', color: '#64748b' }}>
-            <h2>Listo para procesar</h2>
-            <p>Sube los tomos del expediente y obtén una proyección estructurada.</p>
-          </div>
-        )}
-
-        {/* ======================================================== */}
-        {/* AQUÍ VA LA NUEVA HERRAMIENTA DE EXTRACCIÓN (OCR)         */}
-        {/* ======================================================== */}
-        <div style={{ marginTop: '40px' }}>
-          <ExtractorOCR />
+          )}
         </div>
+      )}
 
-      </main>
+
+      {/* ----------------- VISTA 4: EXTRACTOR OCR ----------------- */}
+      {vistaActual === 'ocr' && (
+        <div className="vista-detalle">
+          <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
+          <div style={{ marginTop: '20px' }}>
+            {/* Aquí se inyecta tu componente independiente intacto */}
+            <ExtractorOCR />
+          </div>
+        </div>
+      )}
+
     </div>
   )
 }
