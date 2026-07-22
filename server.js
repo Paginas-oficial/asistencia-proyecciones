@@ -76,11 +76,13 @@ app.post('/api/analizar-tickets', async (req, res) => {
       if (!tickets || tickets.length === 0) {
           return res.status(400).json({ error: "No hay tomos para analizar" });
       }
-// Extraemos los nombres reales de los archivos que llegaron en la petición
-const nombresArchivosReales = req.body.tickets.map(t => t.nombre).join("', '");
-      // 1. Prompt corregido (eliminado el doble const)
+
+      // Extraemos los nombres reales de los archivos que llegaron en la petición
+      const nombresArchivosReales = req.body.tickets.map(t => t.nombre).join("', '");
+      
+      // 1. Prompt corregido y blindado
       const systemPrompt = `
-      Eres un Fiscal experto en delitos de corrupción e investigaciones complejas en Perú. 
+Eres un Fiscal experto en delitos de corrupción e investigaciones complejas en Perú. 
 Analiza detalladamente el texto extraído de la siguiente Carpeta Fiscal.
 
 --- REGLAS DE ANÁLISIS FORENSE ---
@@ -130,14 +132,15 @@ REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENT
 }
 `;
 
-      // 2. Modelo configurado con blindaje para JSON
+      // 2. Modelo configurado con blindaje para JSON y versión correcta
       const model = genAI.getGenerativeModel({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash", 
         systemInstruction: systemPrompt,
         generationConfig: {
-          maxOutputTokens: 8192, // Le damos el máximo espacio posible para que escriba TODAS las pruebas
-    temperature: 0.2, // Temperatura baja para que sea muy analítico y no invente cosas
-      }
+          responseMimeType: "application/json", // <--- BLINDAJE: FORZAR MODO JSON
+          maxOutputTokens: 8192, 
+          temperature: 0.2, 
+        }
     });
 
       console.log("[Servidor] Verificando estado de los PDFs en la nube...");
@@ -174,10 +177,18 @@ REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENT
       console.log("[Servidor] Todos los tomos están listos. Iniciando lectura cruzada...");
       
       const result = await model.generateContent(partes);
-      let text = result.response.text();
+      
+      // BLINDAJE EXTRA: LA "ASPIRADORA" DE TEXTO
+      let textoCrudo = result.response.text();
+      
+      const inicioJson = textoCrudo.indexOf('{');
+      const finJson = textoCrudo.lastIndexOf('}') + 1;
 
-      // Limpiamos manualmente posibles residuos por si acaso
-      text = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      if (inicioJson !== -1 && finJson !== -1) {
+          textoCrudo = textoCrudo.slice(inicioJson, finJson);
+      } else {
+          throw new Error("La IA no devolvió un JSON válido.");
+      }
 
       console.log("[Servidor] Borrando expedientes de los servidores de Google...");
       for (const ticket of tickets) {
@@ -188,7 +199,7 @@ REGLA VITAL DE SINTAXIS: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENT
         }
       }
 
-      res.json(JSON.parse(text));
+      res.json(JSON.parse(textoCrudo));
 
     } catch (error) {
       console.error("Error en el análisis cruzado:", error);
@@ -238,8 +249,9 @@ Reglas Estrictas de Transcripción:
  - Ignorar Ruido: Ignora encabezados, pies de página y elementos gráficos.
  - Tablas: Transcribe el contenido celda por celda, fila por fila. Usa un punto y coma (;) para separar celdas.`;
 
+      // Modelo corregido para la transcripción
       const model = genAI.getGenerativeModel({
-        model: "gemini-3.5-flash",
+        model: "gemini-2.5-flash",
         systemInstruction: systemPrompt
       });
 
