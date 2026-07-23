@@ -153,12 +153,18 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 // =================================================================
 // RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
 // =================================================================
+// =================================================================
+// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
+// =================================================================
 app.post('/api/inventario', async (req, res) => {
-    try {
-        const { tickets } = req.body;
-        if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
+  try {
+      const { tickets } = req.body;
+      if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
-        const promptAuditor = `
+      // Extraemos los nombres de las partes subidas para obligar a la IA a usarlos
+      const nombresArchivos = tickets.map(t => t.nombre).join("', '");
+
+      const promptAuditor = `
 Eres un Auditor Forense Documental. Tu ÚNICA tarea es extraer los Elementos de Convicción del expediente adjunto.
 El expediente está dividido en varias partes, analízalas secuencialmente.
 
@@ -171,44 +177,48 @@ El expediente está dividido en varias partes, analízalas secuencialmente.
 --- MODO TELEGRAMA ---
 - 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS.
 
+--- REGLA ESTRICTA DE ARCHIVOS ---
+Para 'tomoOrigen', PROHIBIDO inventar nombres. Los ÚNICOS válidos son: ['${nombresArchivos}'].
+
 FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para textos):
 {
-  "elementosConviccionEncontrados": [
-    {
-      "tipo": "Nombre exacto y corto",
-      "descripcion": "Descripción concisa. Máximo 10 palabras.",
-      "paginaInicio": 12,
-      "paginaFin": 14
-    }
-  ]
+"elementosConviccionEncontrados": [
+  {
+    "tipo": "Nombre exacto y corto",
+    "descripcion": "Descripción concisa. Máximo 10 palabras.",
+    "tomoOrigen": "Nombre exacto de la parte del archivo",
+    "paginaInicio": 12,
+    "paginaFin": 14
+  }
+]
 }`;
 
-        let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
-        textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
-        
-        let datosParsed;
-        try {
-            datosParsed = JSON.parse(textoCrudo);
-        } catch (errorParse) {
-            console.log("⚠️ JSON truncado. Aplicando protocolo de rescate...");
-            let rescatado = false;
-            let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
-            while (jsonTemp.length > 50 && !rescatado) {
-                try {
-                    datosParsed = JSON.parse(jsonTemp + '] }');
-                    rescatado = true;
-                } catch (e) {
-                    jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
-                }
-            }
-            if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
-        }
-        res.json(datosParsed);
+      let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
+      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
+      
+      let datosParsed;
+      try {
+          datosParsed = JSON.parse(textoCrudo);
+      } catch (errorParse) {
+          console.log("⚠️ JSON truncado. Aplicando protocolo de rescate...");
+          let rescatado = false;
+          let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
+          while (jsonTemp.length > 50 && !rescatado) {
+              try {
+                  datosParsed = JSON.parse(jsonTemp + '] }');
+                  rescatado = true;
+              } catch (e) {
+                  jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
+              }
+          }
+          if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
+      }
+      res.json(datosParsed);
 
-    } catch (error) {
-        console.error("Error en Ruta Inventario:", error);
-        res.status(500).json({ error: "Fallo al generar el inventario." });
-    }
+  } catch (error) {
+      console.error("Error en Ruta Inventario:", error);
+      res.status(500).json({ error: "Fallo al generar el inventario." });
+  }
 });
 
 // =================================================================
