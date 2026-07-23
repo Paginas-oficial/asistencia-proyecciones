@@ -1,471 +1,134 @@
-import { useState } from 'react';
-import './App.css';
-import ExtractorOCR from './ExtractorOCR';
-import { PDFDocument } from 'pdf-lib';
+import React, { useState } from 'react';
 
-function App() {
-  const [tickets, setTickets] = useState([]); 
-  const [cargando, setCargando] = useState(false);
-  const [mensajeEstado, setMensajeEstado] = useState('');
-  const [resultado, setResultado] = useState(null);
-  const [vistaActual, setVistaActual] = useState('inicio');
+export default function FiscalDashboard() {
+  // 🧠 ESTADOS INDEPENDIENTES PARA CADA "CEREBRO"
 
-  const subirTomo = async (e) => {
-    const archivo = e.target.files[0];
-    if (!archivo) return;
+  // 1. Estados para Resumen y Análisis Jurídico
+  const [fileResumen, setFileResumen] = useState(null);
+  const [loadingResumen, setLoadingResumen] = useState(false);
+  const [resultadoResumen, setResultadoResumen] = useState(null);
 
-    setCargando(true);
-    setMensajeEstado(`Subiendo ${archivo.name}...`);
-    
-    const formData = new FormData();
-    formData.append('documentoPdf', archivo);
+  // 2. Estados para Elementos de Convicción
+  const [fileInventario, setFileInventario] = useState(null);
+  const [loadingInventario, setLoadingInventario] = useState(false);
+  const [resultadoInventario, setResultadoInventario] = useState(null);
 
-    try {
-      const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/subir-tomo', {
-        method: 'POST',
-        body: formData,
-      });
-      const datos = await respuesta.json();
-      
-      if (!respuesta.ok) throw new Error(datos.error || 'Error al subir');
-      
-      // LA REPARACIÓN CRÍTICA ESTÁ AQUÍ: Guardamos el archivo físico en la RAM
-      setTickets(prevTickets => [...prevTickets, { ...datos.ticket, archivoFisico: archivo }]);
-      
-    } catch (error) {
-      alert(`Error al subir tomo: ${error.message}`);
-    } finally {
-      setCargando(false);
-      setMensajeEstado('');
-      e.target.value = null; 
-    }
+  // 3. Estados para Diligencias Faltantes (¡NUEVO!)
+  const [fileDiligencias, setFileDiligencias] = useState(null);
+  const [loadingDiligencias, setLoadingDiligencias] = useState(false);
+  const [resultadoDiligencias, setResultadoDiligencias] = useState(null);
+
+  // --- FUNCIONES DE LLAMADA AL BACKEND (Simuladas por ahora) ---
+
+  const procesarResumen = async () => {
+    if (!fileResumen) return alert("Sube un PDF para el resumen");
+    setLoadingResumen(true);
+    // Aquí irá tu fetch a: POST /api/resumen
+    setLoadingResumen(false);
   };
 
-  const procesarExpediente = async () => {
-    if (tickets.length === 0) return alert('Agrega al menos un tomo al carrito.');
-    
-    setCargando(true);
-    setResultado(null); 
-    
-    const tamanoLote = 3;
-    const lotes = [];
-    for (let i = 0; i < tickets.length; i += tamanoLote) {
-      lotes.push(tickets.slice(i, i + tamanoLote));
-    }
-
-    let veredictoFinal = {
-      decision: "ARCHIVAR",
-      probabilidadExito: "Baja", 
-      resumenCronologico: "",
-      elementosConviccionEncontrados: [],
-      elementosFaltantes: [],
-      sustentoJuridico: ""
-    };
-    
-    let indiciosDeViabilidad = false; 
-
-    try {
-      for (let i = 0; i < lotes.length; i++) {
-        setMensajeEstado(`Analizando Lote ${i + 1} de ${lotes.length}...`);
-        
-        // Limpiamos el archivo físico temporalmente para no saturar la red al enviarlo al backend
-        const lotesParaRed = lotes[i].map(t => ({ ...t, archivoFisico: undefined }));
-
-        const respuesta = await fetch('https://api-fiscal-backend.onrender.com/api/analizar-tickets', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ tickets: lotesParaRed }) 
-        });
-        
-        const datos = await respuesta.json();
-        if (!respuesta.ok) throw new Error(datos.error || `Fallo en el lote ${i + 1}`);
-        
-        if (datos.resumenCronologico) veredictoFinal.resumenCronologico += (veredictoFinal.resumenCronologico ? "\n\n" : "") + datos.resumenCronologico;
-        if (datos.sustentoJuridico) veredictoFinal.sustentoJuridico += (veredictoFinal.sustentoJuridico ? "\n\n" : "") + datos.sustentoJuridico;
-        
-        if (Array.isArray(datos.elementosConviccionEncontrados)) {
-          veredictoFinal.elementosConviccionEncontrados = [
-            ...veredictoFinal.elementosConviccionEncontrados,
-            ...datos.elementosConviccionEncontrados
-          ];
-        }
-
-        if (Array.isArray(datos.elementosFaltantes)) {
-          const faltantesLimpios = datos.elementosFaltantes.filter(item => typeof item === 'string' && item.trim() !== '');
-          veredictoFinal.elementosFaltantes = [
-            ...veredictoFinal.elementosFaltantes,
-            ...faltantesLimpios
-          ];
-        }
-
-        const prob = String(datos.probabilidadExito).toUpperCase();
-        if (prob.includes('ALTA') || prob.includes('MEDIA')) {
-          indiciosDeViabilidad = true;
-        }
-      }
-
-      veredictoFinal.probabilidadExito = indiciosDeViabilidad ? "Media/Alta (Existen elementos suficientes)" : "Baja (Carece de elementos)";
-      veredictoFinal.decision = indiciosDeViabilidad ? "FORMALIZAR" : "ARCHIVAR";
-
-      setResultado(veredictoFinal); 
-      setMensajeEstado('¡Análisis completado!');
-
-    } catch (error) {
-      alert(`Ocurrió un problema procesando la cola: ${error.message}`);
-    } finally {
-      setCargando(false);
-      setTimeout(() => setMensajeEstado(''), 4000); 
-    }
+  const procesarInventario = async () => {
+    if (!fileInventario) return alert("Sube un PDF para extraer pruebas");
+    setLoadingInventario(true);
+    // Aquí irá tu fetch a: POST /api/inventario
+    setLoadingInventario(false);
   };
 
-  // NUEVA FUNCIÓN: Cortar y Descargar RANGO de Páginas
-  const descargarRangoFisico = async (nombreDocumento, paginaInicio, paginaFin, tipoElemento) => {
-    try {
-      if (!tickets || tickets.length === 0) {
-        return alert("⚠️ El carrito está vacío. Sube los tomos al Panel Principal de nuevo.");
-      }
-
-      // Validamos y convertimos las páginas a números
-      const inicio = parseInt(paginaInicio, 10);
-      const fin = parseInt(paginaFin || paginaInicio, 10); 
-
-      if (isNaN(inicio) || isNaN(fin) || inicio > fin) {
-        return alert(`Rango de páginas inválido: ${paginaInicio} al ${paginaFin}`);
-      }
-
-      let ticketCorrecto = tickets.find(t => t.nombre.trim() === String(nombreDocumento).trim());
-
-      if (!ticketCorrecto) {
-        const matchTomo = String(nombreDocumento).match(/tomo\s*(\d+)/i);
-        if (matchTomo) {
-          const numeroTomo = matchTomo[1]; 
-          ticketCorrecto = tickets.find(t => {
-            const matchTTicket = t.nombre.match(/tomo\s*(\d+)/i);
-            return matchTTicket && matchTTicket[1] === numeroTomo; 
-          });
-        }
-      }
-
-      if (!ticketCorrecto) {
-        const limpiarTexto = (txt) => String(txt).toLowerCase().replace(/[^a-z0-9]/g, '').replace('comprimido', '').replace('compressed', '');
-        const limpioBuscado = limpiarTexto(nombreDocumento);
-        
-        ticketCorrecto = tickets.find(t => {
-          const limpioTicket = limpiarTexto(t.nombre);
-          return limpioTicket.includes(limpioBuscado) || limpioBuscado.includes(limpioTicket);
-        });
-      }
-
-      if (!ticketCorrecto || !ticketCorrecto.archivoFisico) {
-        return alert(`Error: No pude emparejar "${nombreDocumento}" con ningún PDF en tu carrito. Asegúrate de haber subido este tomo específico.`);
-      }
-
-      setMensajeEstado(`Extrayendo Págs. ${inicio} al ${fin} de ${ticketCorrecto.nombre}...`);
-      
-      const arrayBuffer = await ticketCorrecto.archivoFisico.arrayBuffer();
-      const pdfOriginal = await PDFDocument.load(arrayBuffer);
-      const pdfCortado = await PDFDocument.create();
-      
-      const indiceInicio = inicio - 1; 
-      const indiceFin = fin - 1;
-
-      if (indiceInicio < 0 || indiceFin >= pdfOriginal.getPageCount()) {
-          throw new Error("El rango de páginas excede el total del PDF original.");
-      }
-
-      // Creamos un array con todos los índices de páginas a extraer
-      const paginasAExtraer = [];
-      for (let i = indiceInicio; i <= indiceFin; i++) {
-        paginasAExtraer.push(i);
-      }
-
-      // Copiamos todas las páginas del rango de golpe
-      const paginasCopiadas = await pdfCortado.copyPages(pdfOriginal, paginasAExtraer);
-      paginasCopiadas.forEach((pagina) => pdfCortado.addPage(pagina));
-      
-      const pdfBytes = await pdfCortado.save();
-      const blob = new Blob([pdfBytes], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      
-      const link = document.createElement('a');
-      link.href = url;
-      // Nombre del archivo reflejando el rango
-      link.download = `${String(tipoElemento).replace(/[^a-zA-Z0-9]/g, '_')}_Pag${inicio}_a_${fin}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      setMensajeEstado('');
-    } catch (error) {
-      alert(`Error al extraer rango de páginas: ${error.message}`);
-      setMensajeEstado('');
-    }
-  };
-
-  const limpiarCarrito = () => {
-    setTickets([]);
-    setResultado(null);
-  };
-
-  const exportarAWord = () => {
-    if (!resultado) return;
-
-    const formatearLista = (datos) => {
-      if (Array.isArray(datos)) return datos.map(item => `<li>${item}</li>`).join('');
-      if (typeof datos === 'string') return datos.split('\n').filter(i => i.trim()).map(item => `<li>${item.replace(/^- /, '')}</li>`).join('');
-      return '<li>No hay datos</li>';
-    };
-
-    const elementosHTML = formatearLista(resultado.elementosConviccionEncontrados);
-    const diligenciasHTML = formatearLista(resultado.elementosFaltantes);
-
-    const contenidoHTML = `
-      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
-      <head><meta charset='utf-8'><title>Proyección Fiscal</title></head>
-      <body style="font-family: Arial, sans-serif;">
-        <h1 style="text-align: center; color: #1e293b;">Análisis de Caso - Proyección Fiscal</h1>
-        <h2>1. Probabilidad de Éxito y Sugerencia</h2>
-        <p><strong>Evaluación:</strong> ${resultado.probabilidadExito}</p>
-        
-        <h2>2. Resumen Fáctico</h2>
-        <p>${resultado.resumenCronologico}</p>
-        
-        <h2>3. Elementos de Convicción Hallados</h2>
-        <ul>${elementosHTML}</ul>
-        
-        <h2>4. Diligencias Faltantes (Plan de Trabajo)</h2>
-        <ul>${diligenciasHTML}</ul>
-        
-        <h2>5. Sustento Jurídico</h2>
-        <p>${resultado.sustentoJuridico}</p>
-      </body>
-      </html>
-    `;
-
-    const blob = new Blob(['\ufeff', contenidoHTML], { type: 'application/msword' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'Proyeccion_Fiscal_Analisis.doc';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const procesarDiligencias = async () => {
+    if (!fileDiligencias) return alert("Sube un PDF para analizar vacíos");
+    setLoadingDiligencias(true);
+    // Aquí irá tu fetch a: POST /api/diligencias
+    setLoadingDiligencias(false);
   };
 
   return (
-    <div className="app-fondo">
-      {vistaActual === 'inicio' && (
-        <div className="dashboard-container">
-          <div>
-            <h1 className="titulo-central">PROYECCIÓN FISCAL</h1>
-            <p className="subtitulo-central">DÉBORA</p>
-          </div>
+    <div className="min-h-screen bg-gray-900 text-white p-8">
+      <h1 className="text-3xl font-bold mb-8 text-center">Asistencia de Proyecciones Fiscales</h1>
 
-          <div className="tarjeta-principal">
-            <div className="zona-carga">
-              <h2>Añadir PDFs al Caso</h2>
-              <input 
-                type="file" 
-                id="file-upload" 
-                accept=".pdf" 
-                onChange={subirTomo} 
-                disabled={cargando} 
-                style={{ display: 'none' }} 
-              />
-              <label htmlFor="file-upload" style={{
-                background: '#3b82f6', color: 'white', padding: '12px 24px', 
-                borderRadius: '6px', cursor: cargando ? 'not-allowed' : 'pointer',
-                display: 'inline-block', fontWeight: 'bold'
-              }}>
-                {cargando && mensajeEstado.includes('Subiendo') ? '⏳ Cargando Tomo...' : '📄 Seleccionar Archivo'}
-              </label>
-
-              {mensajeEstado && (
-                <p style={{ color: '#f59e0b', fontWeight: 'bold', marginTop: '15px' }}>{mensajeEstado}</p>
-              )}
-            </div>
-
-            {tickets.length > 0 && (
-              <div style={{ textAlign: 'left', background: '#f8fafc', padding: '15px', borderRadius: '8px', marginBottom: '20px' }}>
-                <h4 style={{ margin: '0 0 10px 0', color: '#475569' }}>Tomos en Memoria ({tickets.length}):</h4>
-                <ul style={{ listStyle: 'none', padding: 0, margin: 0, color: '#10b981', fontSize: '0.9rem' }}>
-                  {tickets.map((t, i) => (
-                    <li key={i}>✅ {t.nombre}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '15px' }}>
-              <button 
-                onClick={procesarExpediente} 
-                disabled={cargando || tickets.length === 0} 
-                style={{
-                  background: tickets.length > 0 && !cargando ? '#1e293b' : '#cbd5e1',
-                  color: 'white', border: 'none', padding: '12px 24px', borderRadius: '6px',
-                  fontWeight: 'bold', cursor: tickets.length > 0 && !cargando ? 'pointer' : 'not-allowed'
-                }}
-              >
-                {cargando && mensajeEstado.includes('Analizando') ? '🧠 Procesando Lotes...' : '⚖️ Ejecutar Análisis Cruzado'}
-              </button>
-
-              {tickets.length > 0 && !cargando && (
-                <button onClick={limpiarCarrito} style={{
-                  background: 'transparent', color: '#ef4444', border: '1px solid #ef4444', 
-                  padding: '12px 24px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold'
-                }}>
-                  🗑️ Limpiar
-                </button>
-              )}
-            </div>
-
-            {resultado && (
-              <div style={{ marginTop: '20px' }}>
-                <div className={`banner-veredicto ${
-                  String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
-                  String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
-                  ? 'banner-formalizar' : 'banner-archivar'
-                }`}>
-                  {String(resultado.probabilidadExito).toUpperCase().includes('ALTA') || 
-                  String(resultado.probabilidadExito).toUpperCase().includes('MEDIA') 
-                    ? '⚖️ SUGERENCIA: FORMALIZAR INVESTIGACIÓN' 
-                    : '🗂️ SUGERENCIA: ARCHIVO PRELIMINAR'}
-                </div>
-                <button onClick={exportarAWord} className="boton-exportar" style={{ margin: '0 auto' }}>
-                  💾 Exportar Informe Completo a Word
-                </button>
-              </div>
-            )}
-          </div>
-
-          <div className="modulos-grid">
-            <div className="tarjeta-modulo resumen" onClick={() => setVistaActual('resumen')}>
-              <span className="icono-modulo">📝</span>
-              <h3>Resumen Fáctico</h3>
-              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Cronología de los hechos del caso.</p>
-            </div>
-            
-            <div className="tarjeta-modulo elementos" onClick={() => setVistaActual('elementos')}>
-              <span className="icono-modulo">🔎</span>
-              <h3>Elementos de Convicción</h3>
-              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Pruebas halladas y extracciones.</p>
-            </div>
-            
-            <div className="tarjeta-modulo ocr" onClick={() => setVistaActual('ocr')}>
-              <span className="icono-modulo">🖨️</span>
-              <h3>Extractor OCR</h3>
-              <p style={{ fontSize: '0.85rem', color: '#64748b' }}>Digitaliza fojas específicas a texto plano.</p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {vistaActual === 'resumen' && (
-        <div className="vista-detalle">
-          <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
-          <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>📝 Resumen Fáctico y Sustento Jurídico</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        
+        {/* TARJETA 1: RESUMEN Y ANÁLISIS */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-blue-500">
+          <h2 className="text-xl font-semibold mb-2 text-blue-400">🧠 Resumen y Análisis Jurídico</h2>
+          <p className="text-sm text-gray-400 mb-4">Analiza hechos, cronología y sustento legal del tomo.</p>
           
-          {resultado ? (
-            <>
-              <p style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', lineHeight: '1.8', fontSize: '1.05rem', color: '#334155' }}>
-                {typeof resultado.resumenCronologico === 'object' ? JSON.stringify(resultado.resumenCronologico) : resultado.resumenCronologico}
-              </p>
-              <h3 style={{ marginTop: '30px' }}>Sustento Jurídico Aplicable</h3>
-              <p style={{ background: '#f1f5f9', padding: '20px', borderRadius: '8px', borderLeft: '4px solid #64748b', lineHeight: '1.8' }}>
-                {typeof resultado.sustentoJuridico === 'object' ? JSON.stringify(resultado.sustentoJuridico) : resultado.sustentoJuridico}
-              </p>
-            </>
-          ) : (
-            <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>
-              Aún no hay un análisis. Ve al Panel Principal, añade los tomos y ejecuta el Análisis Cruzado.
-            </p>
+          <input 
+            type="file" 
+            accept="application/pdf"
+            onChange={(e) => setFileResumen(e.target.files[0])}
+            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 mb-4"
+          />
+          <button 
+            onClick={procesarResumen}
+            disabled={loadingResumen}
+            className="w-full bg-blue-600 hover:bg-blue-700 p-2 rounded font-bold"
+          >
+            {loadingResumen ? "Analizando..." : "Generar Resumen"}
+          </button>
+          
+          {/* Zona de resultados Tarjeta 1 */}
+          {resultadoResumen && (
+            <div className="mt-4 p-4 bg-gray-700 rounded text-sm">
+              {/* Aquí renderizas tus datos */}
+            </div>
           )}
         </div>
-      )}
 
-      {vistaActual === 'elementos' && (
-        <div className="vista-detalle">
-          <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
+        {/* TARJETA 2: INVENTARIO PROBATORIO (CERO OMISIONES) */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-green-500">
+          <h2 className="text-xl font-semibold mb-2 text-green-400">🕵️‍♂️ Elementos de Convicción</h2>
+          <p className="text-sm text-gray-400 mb-4">Extrae documentos relevantes y anexos ignorando el ruido procesal.</p>
           
-          {resultado ? (
-            <>
-              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px' }}>🔎 Pruebas Documentales Halladas</h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                
-                {Array.isArray(resultado.elementosConviccionEncontrados) && resultado.elementosConviccionEncontrados.length > 0 ? (
-                  resultado.elementosConviccionEncontrados.map((item, i) => {
-                    
-                    if (typeof item === 'string') {
-                      return (
-                         <div key={i} style={{ background: '#f8fafc', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #3b82f6' }}>
-                           <p style={{ margin: 0 }}>{item}</p>
-                         </div>
-                      );
-                    }
+          <input 
+            type="file" 
+            accept="application/pdf"
+            onChange={(e) => setFileInventario(e.target.files[0])}
+            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-green-600 file:text-white hover:file:bg-green-700 mb-4"
+          />
+          <button 
+            onClick={procesarInventario}
+            disabled={loadingInventario}
+            className="w-full bg-green-600 hover:bg-green-700 p-2 rounded font-bold"
+          >
+            {loadingInventario ? "Extrayendo..." : "Generar Inventario"}
+          </button>
 
-                    return (
-                      <div key={i} style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', borderLeft: '4px solid #3b82f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <div style={{ paddingRight: '20px' }}>
-                          <h4 style={{ margin: '0 0 5px 0', color: '#1e293b', fontSize: '1.1rem' }}>{item.tipo || 'Documento'}</h4>
-                          <p style={{ margin: '0 0 5px 0', color: '#475569', fontSize: '0.95rem' }}>
-                            {typeof item.descripcion === 'object' ? JSON.stringify(item.descripcion) : item.descripcion}
-                          </p>
-                          <span style={{ fontSize: '0.8rem', color: '#94a3b8', fontWeight: 'bold' }}>
-                            {/* AQUÍ ESTÁ EL CAMBIO PARA MOSTRAR RANGOS EN LA TARJETA */}
-                            Ubicación: {item.tomoOrigen || 'No especificado'} - Págs {item.paginaInicio || item.paginaExactaPDF || '?'} al {item.paginaFin || item.paginaInicio || item.paginaExactaPDF || '?'}
-                          </span>
-                        </div>
-                        
-                        {/* Mantenemos soporte retroactivo por si hay análisis cacheados que usen paginaExactaPDF */}
-                        {(item.paginaInicio || item.paginaExactaPDF) && (
-                          <button 
-                            onClick={() => descargarRangoFisico(item.tomoOrigen, item.paginaInicio || item.paginaExactaPDF, item.paginaFin || item.paginaInicio || item.paginaExactaPDF, item.tipo || 'Documento')}
-                            style={{ minWidth: '130px', background: '#3b82f6', color: 'white', border: 'none', padding: '10px 15px', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}
-                          >
-                            📥 Bajar Págs. {item.paginaInicio || item.paginaExactaPDF}-{item.paginaFin || item.paginaInicio || item.paginaExactaPDF}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })
-                ) : (
-                  <p>No se encontraron elementos o ejecuta un nuevo análisis para estructurarlos.</p>
-                )}
-              </div>
-
-              <h2 style={{ color: '#1e293b', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginTop: '40px' }}>📋 Plan de Trabajo (Faltantes)</h2>
-              <ul className="lista-diligencias">
-                {Array.isArray(resultado.elementosFaltantes) && resultado.elementosFaltantes.map((item, i) => {
-                  const textoMostrar = typeof item === 'object' ? (item.descripcion || item.tipo || JSON.stringify(item)) : item;
-                  
-                  return (
-                    <li key={i}>
-                      <input type="checkbox" className="checkbox-fiscal" id={`check-${i}`} />
-                      <label htmlFor={`check-${i}`} style={{ cursor: 'pointer', fontSize: '1.05rem' }}>{textoMostrar}</label>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          ) : (
-             <p style={{ color: '#64748b', textAlign: 'center', padding: '40px' }}>
-              Aún no hay un análisis. Ve al Panel Principal, añade los tomos y ejecuta el Análisis Cruzado.
-            </p>
+          {/* Zona de resultados Tarjeta 2 */}
+          {resultadoInventario && (
+            <div className="mt-4 p-4 bg-gray-700 rounded text-sm">
+              {/* Aquí renderizas tus elementos */}
+            </div>
           )}
         </div>
-      )}
 
-      {vistaActual === 'ocr' && (
-        <div className="vista-detalle">
-          <button className="boton-volver" onClick={() => setVistaActual('inicio')}>⬅ Volver al Panel Principal</button>
-          <div style={{ marginTop: '20px' }}>
-            <ExtractorOCR />
-          </div>
+        {/* TARJETA 3: DILIGENCIAS FALTANTES (NUEVA) */}
+        <div className="bg-gray-800 p-6 rounded-lg shadow-lg border border-red-500">
+          <h2 className="text-xl font-semibold mb-2 text-red-400">🎯 Diligencias Faltantes</h2>
+          <p className="text-sm text-gray-400 mb-4">Identifica vacíos de investigación y sugiere actos procesales.</p>
+          
+          <input 
+            type="file" 
+            accept="application/pdf"
+            onChange={(e) => setFileDiligencias(e.target.files[0])}
+            className="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-sm file:font-semibold file:bg-red-600 file:text-white hover:file:bg-red-700 mb-4"
+          />
+          <button 
+            onClick={procesarDiligencias}
+            disabled={loadingDiligencias}
+            className="w-full bg-red-600 hover:bg-red-700 p-2 rounded font-bold"
+          >
+            {loadingDiligencias ? "Evaluando..." : "Analizar Estrategia"}
+          </button>
+
+          {/* Zona de resultados Tarjeta 3 */}
+          {resultadoDiligencias && (
+            <div className="mt-4 p-4 bg-gray-700 rounded text-sm">
+              {/* Aquí renderizas las diligencias */}
+            </div>
+          )}
         </div>
-      )}
 
+      </div>
     </div>
-  )
+  );
 }
-
-export default App;
