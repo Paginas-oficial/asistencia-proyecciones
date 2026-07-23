@@ -36,34 +36,64 @@ if (!fs.existsSync('uploads')){
 }
 
 // =================================================================
-// MOTOR CENTRAL DE PROCESAMIENTO (Sube, Analiza y Limpia)
+// RUTA DE SUBIDA EN COLA (GENERADOR DE TICKETS)
 // =================================================================
-async function analizarConGemini(filePath, fileName, systemPrompt) {
-    console.log(`\n[Motor] Subiendo a Gemini: ${fileName}`);
-    const uploadResult = await fileManager.uploadFile(filePath, {
+app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
+    try {
+      const file = req.file;
+      if (!file) return res.status(400).json({ error: "No se recibió la parte del tomo" });
+  
+      console.log(`-> Subiendo a Google: ${file.originalname}`);
+      const uploadResult = await fileManager.uploadFile(file.path, {
         mimeType: "application/pdf", 
-        displayName: fileName,
-    });
+        displayName: file.originalname,
+      });
+  
+      fs.unlinkSync(file.path); // Borramos el archivo local de Render
+  
+      res.json({
+        mensaje: "Parte almacenada",
+        ticket: {
+          fileUri: uploadResult.file.uri,
+          mimeType: "application/pdf", 
+          nombre: file.originalname,
+          googleName: uploadResult.file.name 
+        }
+      });
+    } catch (error) {
+      console.error("Error al subir el tomo:", error);
+      res.status(500).json({ error: "Fallo al subir la parte." });
+    }
+});
 
-    // 1. Esperar a que Google procese el PDF
-    let archivoListo = false;
-    let intentos = 0;
-    while (!archivoListo && intentos < 20) {
-        const fileInfo = await fileManager.getFile(uploadResult.file.name);
-        if (fileInfo.state === "ACTIVE") {
-            console.log(`[Motor] ✅ PDF procesado en la nube. Iniciando IA...`);
-            archivoListo = true;
-        } else if (fileInfo.state === "FAILED") {
-            throw new Error(`Google falló al leer el PDF.`);
-        } else {
-            await new Promise(r => setTimeout(r, 5000));
-            intentos++;
+// =================================================================
+// MOTOR CENTRAL DE PROCESAMIENTO MULTI-PARTES
+// =================================================================
+async function analizarTicketsConGemini(tickets, systemPrompt) {
+    console.log(`\n[Motor] Verificando ${tickets.length} partes en la nube de Google...`);
+    
+    // 1. Esperar a que TODAS las partes estén procesadas
+    for (const ticket of tickets) {
+        if (!ticket.googleName) throw new Error("Falta el ID del archivo.");
+        let archivoListo = false;
+        let intentos = 0;
+        while (!archivoListo && intentos < 20) { 
+            const fileInfo = await fileManager.getFile(ticket.googleName);
+            if (fileInfo.state === "ACTIVE") {
+                console.log(` - ✅ ${ticket.nombre} listo.`);
+                archivoListo = true;
+            } else if (fileInfo.state === "FAILED") {
+                throw new Error(`Google falló al leer el PDF: ${ticket.nombre}`);
+            } else {
+                await new Promise(r => setTimeout(r, 5000));
+                intentos++;
+            }
         }
     }
 
     // 2. Configurar el "Cerebro" (Modelo y Prompt)
     const model = genAI.getGenerativeModel({
-        model: "gemini-3.5-flash", 
+        model: "gemini-1.5-flash", 
         systemInstruction: systemPrompt,
         generationConfig: {
             responseMimeType: "application/json",
@@ -72,47 +102,45 @@ async function analizarConGemini(filePath, fileName, systemPrompt) {
         }
     });
 
-    // 3. Generar la respuesta
-    const result = await model.generateContent([
-        { fileData: { fileUri: uploadResult.file.uri, mimeType: "application/pdf" } }
-    ]);
-    
+    // 3. Armar la lista de archivos para inyectarlos en orden
+    const fileParts = tickets.map(t => ({
+        fileData: { fileUri: t.fileUri, mimeType: "application/pdf" }
+    }));
+
+    console.log("[Motor] Iniciando lectura cruzada de las partes...");
+    const result = await model.generateContent(fileParts);
     const textoCrudo = result.response.text();
 
     // 4. Limpieza automática de la nube
-    try {
-        await fileManager.deleteFile(uploadResult.file.name);
-        console.log(`[Motor] 🗑️ Archivo borrado de la nube de Google.`);
-    } catch (e) {
-        console.error("Error borrando archivo:", e);
+    for (const ticket of tickets) {
+        try { await fileManager.deleteFile(ticket.googleName); } 
+        catch (e) { console.error(` - Fallo al borrar:`, e.message); }
     }
 
     return textoCrudo;
 }
 
 // =================================================================
-// RUTA 1: CEREBRO DE RESUMEN Y ANÁLISIS JURÍDICO
+// RUTA 1: CEREBRO DE RESUMEN
 // =================================================================
-app.post('/api/resumen', upload.single('pdf'), async (req, res) => {
+app.post('/api/resumen', async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "No se recibió el PDF" });
+        const { tickets } = req.body;
+        if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
         const promptResumen = `
 Eres un Fiscal Superior analizando un caso complejo de corrupción en Perú.
-Tu ÚNICA tarea es redactar un Resumen de los Hechos y un Análisis Jurídico.
-TOMA TODO EL ESPACIO QUE NECESITES. Escribe con detalle, redacta una historia clara de qué pasó, quiénes están involucrados y cuál es el presunto delito.
-No extraigas listas de documentos, solo concéntrate en la narrativa y la estrategia legal.
+Tu ÚNICA tarea es redactar un Resumen de los Hechos y un Análisis Jurídico unificado de todas las partes del tomo proporcionado.
+TOMA TODO EL ESPACIO QUE NECESITES. Escribe con detalle, redacta una historia clara de qué pasó.
 
 FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para textos internos):
 {
-  "resumenCronologico": "Redacción detallada de los hechos procesales y delictivos...",
+  "resumenCronologico": "Redacción detallada de los hechos procesales...",
   "sustentoJuridico": "Análisis legal completo...",
   "probabilidadExito": "Alta, Media o Baja"
 }`;
 
-        let textoCrudo = await analizarConGemini(req.file.path, req.file.originalname, promptResumen);
-        fs.unlinkSync(req.file.path); // Borrar local
-        
+        let textoCrudo = await analizarTicketsConGemini(tickets, promptResumen);
         textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
         res.json(JSON.parse(textoCrudo));
 
@@ -123,106 +151,87 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 });
 
 // =================================================================
-// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO - CERO OMISIONES)
+// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
 // =================================================================
-// =================================================================
-// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO - CERO OMISIONES)
-// =================================================================
-app.post('/api/inventario', upload.single('pdf'), async (req, res) => {
-  try {
-      if (!req.file) return res.status(400).json({ error: "No se recibió el PDF" });
+app.post('/api/inventario', async (req, res) => {
+    try {
+        const { tickets } = req.body;
+        if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
-      const nombreArchivo = req.file.originalname;
-      const promptAuditor = `
-Eres un Auditor Forense Documental. Tu ÚNICA tarea es extraer los Elementos de Convicción del tomo.
+        const promptAuditor = `
+Eres un Auditor Forense Documental. Tu ÚNICA tarea es extraer los Elementos de Convicción del expediente adjunto.
+El expediente está dividido en varias partes, analízalas secuencialmente.
 
 --- METODOLOGÍA DE EXTRACCIÓN Y PRIORIDADES ---
 1. PRIORIDAD MÁXIMA: Extrae todas las Notas Informativas, Memorandos, Resoluciones, Informes y Oficios.
-2. EXCLUSIÓN (FILTRO DE BASURA PROCESAL): Tienes ESTRICTAMENTE PROHIBIDO extraer:
- - Copias de DNI o documentos de identidad.
- - Correos electrónicos.
- - Cargos (de ingreso, recepción, derivación o notificación).
- - Carátulas, portadas o páginas separadoras.
- - Escritos de apersonamiento de abogados o partes.
+2. EXCLUSIÓN: Tienes ESTRICTAMENTE PROHIBIDO extraer Copias de DNI, Correos, Cargos, Carátulas y Escritos de apersonamiento.
 3. REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones del "2do Despacho de la Primera Fiscalía Provincial Corporativa Especializada en Delitos de Corrupción de Funcionarios de Lima".
-4. DESGLOSE DE ANEXOS: Los ANEXOS deben registrarse SIEMPRE como objetos independientes con su propia paginación.
+4. DESGLOSE DE ANEXOS: Los ANEXOS deben registrarse SIEMPRE como objetos independientes.
 
---- MODO TELEGRAMA (AHORRO DE TOKENS) ---
-- 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS. Solo indica de qué trata. Elimina formalismos.
-- 'tipo': Usa abreviaturas (Ej. 'Res. Min. N° 650', 'Anexo 1: Contrato').
-
---- REGLA ESTRICTA DE ARCHIVOS ---
-Para 'tomoOrigen', PROHIBIDO inventar nombres. El ÚNICO válido es: '${nombreArchivo}'.
+--- MODO TELEGRAMA ---
+- 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS.
 
 FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para textos):
 {
-"elementosConviccionEncontrados": [
-  {
-    "tipo": "Nombre exacto y corto",
-    "descripcion": "Descripción concisa. Máximo 10 palabras.",
-    "tomoOrigen": "${nombreArchivo}",
-    "paginaInicio": 12,
-    "paginaFin": 14
-  }
-]
-}`;
-
-      let textoCrudo = await analizarConGemini(req.file.path, req.file.originalname, promptAuditor);
-      fs.unlinkSync(req.file.path); 
-      
-      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
-      
-      let datosParsed;
-      // PROTOCOLO DE RESCATE (Solo para la lista que puede truncarse)
-      try {
-          datosParsed = JSON.parse(textoCrudo);
-      } catch (errorParse) {
-          console.log("⚠️ JSON truncado detectado. Aplicando protocolo de rescate...");
-          let rescatado = false;
-          let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
-          while (jsonTemp.length > 50 && !rescatado) {
-              try {
-                  datosParsed = JSON.parse(jsonTemp + '] }');
-                  rescatado = true;
-                  console.log("✅ JSON de Inventario rescatado con éxito.");
-              } catch (e) {
-                  jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
-              }
-          }
-          if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
-      }
-
-      res.json(datosParsed);
-
-  } catch (error) {
-      console.error("Error en Ruta Inventario:", error);
-      res.status(500).json({ error: "Fallo al generar el inventario." });
-  }
-});
-// =================================================================
-// RUTA 3: CEREBRO ESTRATEGA (DILIGENCIAS FALTANTES)
-// =================================================================
-app.post('/api/diligencias', upload.single('pdf'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).json({ error: "No se recibió el PDF" });
-
-        const promptEstratega = `
-Eres un Fiscal Superior Estratega evaluando un caso de corrupción.
-Tu ÚNICA tarea es leer el expediente e identificar QUÉ FALTA.
-Detecta vacíos en la investigación, personas mencionadas a las que no se ha interrogado, o documentos financieros, periciales o levantamientos de secreto bancario que la fiscalía debería solicitar para formalizar o fortalecer el caso.
-
-FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para textos):
-{
-  "elementosFaltantes": [
-    "Tomar declaración testimonial de X persona...",
-    "Solicitar levantamiento del secreto bancario de la empresa Y...",
-    "Requerir peritaje contable al informe Z..."
+  "elementosConviccionEncontrados": [
+    {
+      "tipo": "Nombre exacto y corto",
+      "descripcion": "Descripción concisa. Máximo 10 palabras.",
+      "paginaInicio": 12,
+      "paginaFin": 14
+    }
   ]
 }`;
 
-        let textoCrudo = await analizarConGemini(req.file.path, req.file.originalname, promptEstratega);
-        fs.unlinkSync(req.file.path); 
+        let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
+        textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
         
+        let datosParsed;
+        try {
+            datosParsed = JSON.parse(textoCrudo);
+        } catch (errorParse) {
+            console.log("⚠️ JSON truncado. Aplicando protocolo de rescate...");
+            let rescatado = false;
+            let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
+            while (jsonTemp.length > 50 && !rescatado) {
+                try {
+                    datosParsed = JSON.parse(jsonTemp + '] }');
+                    rescatado = true;
+                } catch (e) {
+                    jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
+                }
+            }
+            if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
+        }
+        res.json(datosParsed);
+
+    } catch (error) {
+        console.error("Error en Ruta Inventario:", error);
+        res.status(500).json({ error: "Fallo al generar el inventario." });
+    }
+});
+
+// =================================================================
+// RUTA 3: CEREBRO ESTRATEGA (DILIGENCIAS FALTANTES)
+// =================================================================
+app.post('/api/diligencias', async (req, res) => {
+    try {
+        const { tickets } = req.body;
+        if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
+
+        const promptEstratega = `
+Eres un Fiscal Superior Estratega. Tu ÚNICA tarea es leer las partes del expediente e identificar QUÉ FALTA.
+Detecta vacíos en la investigación, personas a las que no se ha interrogado, o documentos financieros/periciales que faltan solicitar.
+
+FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido):
+{
+  "elementosFaltantes": [
+    "Tomar declaración testimonial de X persona...",
+    "Solicitar levantamiento del secreto bancario de la empresa Y..."
+  ]
+}`;
+
+        let textoCrudo = await analizarTicketsConGemini(tickets, promptEstratega);
         textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
         res.json(JSON.parse(textoCrudo));
 
@@ -233,7 +242,7 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 });
 
 // =================================================================
-// RUTA 4: EXTRACTOR LITERAL (El Digitalizador OCR del Usuario)
+// RUTA 4: EXTRACTOR LITERAL (OCR)
 // =================================================================
 app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) => {
   try {
@@ -241,29 +250,35 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
       const { instruccion } = req.body; 
       if (!file || !instruccion) return res.status(400).json({ error: "Faltan datos" });
 
-      const promptOCR = `Rol: Actúa como un Asistente de Digitalización y Transcripción Documental. Tu única función es procesar los archivos PDF o imágenes y convertirlos en texto plano.
-Reglas Estrictas: Transcribe literalmente según mis instrucciones: "${instruccion}". Sin saludos. Sin formato. Reemplaza partes ilegibles con [texto ilegible].`;
-
-      let textoCrudo = await analizarConGemini(file.path, file.originalname, promptOCR);
+      console.log(`-> Subiendo a Google OCR: ${file.originalname}`);
+      const uploadResult = await fileManager.uploadFile(file.path, { mimeType: "application/pdf", displayName: file.originalname });
       fs.unlinkSync(file.path);
 
-      res.json({ texto: textoCrudo });
+      let archivoListo = false; let intentos = 0;
+      while (!archivoListo && intentos < 20) {
+        const fileInfo = await fileManager.getFile(uploadResult.file.name);
+        if (fileInfo.state === "ACTIVE") archivoListo = true;
+        else if (fileInfo.state === "FAILED") throw new Error("Fallo OCR en nube.");
+        else { await new Promise(r => setTimeout(r, 5000)); intentos++; }
+      }
+
+      const promptOCR = `Rol: Asistente de Digitalización. Reglas: Transcribe literalmente según mi instrucción: "${instruccion}". Sin saludos ni formato.`;
+      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: promptOCR });
+      const result = await model.generateContent([{ fileData: { fileUri: uploadResult.file.uri, mimeType: "application/pdf" } }]);
+      
+      try { await fileManager.deleteFile(uploadResult.file.name); } catch(e){}
+      res.json({ texto: result.response.text() });
 
   } catch (error) {
-      console.error("Error en transcripción OCR:", error);
-      res.status(500).json({ error: "Fallo al transcribir el documento." });
+      console.error("Error OCR:", error);
+      res.status(500).json({ error: "Fallo en OCR." });
   }
 });
 
-// =================================================================
-// INICIO DEL SERVIDOR
-// =================================================================
 const servidorConfigurado = app.listen(puerto, () => {
     console.log(`=================================================`);
-    console.log(`Servidor de Agentes Modulares en http://localhost:${puerto}`);
-    console.log(`Listo para recibir PDFs en las 4 rutas distintas.`);
+    console.log(`Servidor Modular de Alta Calidad en http://localhost:${puerto}`);
+    console.log(`Listo para recibir partes de PDFs en cola.`);
     console.log(`=================================================`);
 });
-
-// Aumentamos el Timeout a 10 minutos para soportar PDFs gigantes
 servidorConfigurado.timeout = 10 * 60 * 1000;
