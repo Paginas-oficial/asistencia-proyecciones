@@ -125,96 +125,80 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 // =================================================================
 // RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO - CERO OMISIONES)
 // =================================================================
+// =================================================================
+// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO - CERO OMISIONES)
+// =================================================================
 app.post('/api/inventario', upload.single('pdf'), async (req, res) => {
-    try {
-        if (!req.file) return res.status(400).json({ error: "No se recibió el PDF" });
+  try {
+      if (!req.file) return res.status(400).json({ error: "No se recibió el PDF" });
 
-        const nombreArchivo = req.file.originalname;
-        const promptAuditor = `
-Eres un Fiscal Investigador y Auditor Forense Documental experto en delitos de corrupción en Perú.
-Tu tarea es realizar un INVENTARIO PROBATORIO ESTRATÉGICO, revisando el archivo foja por foja.
+      const nombreArchivo = req.file.originalname;
+      const promptAuditor = `
+Eres un Auditor Forense Documental. Tu ÚNICA tarea es extraer los Elementos de Convicción del tomo.
 
 --- METODOLOGÍA DE EXTRACCIÓN Y PRIORIDADES ---
-1. PRIORIDAD MÁXIMA (LA CARNE DEL CASO): Debes buscar activamente y asegurar la extracción de toda: Nota Informativa, Memorando, Resolución (Ministerial, Directoral, Jefatural, etc.), Informes y Oficios. Estos son el núcleo del caso.
-2. EXCLUSIÓN ESPECÍFICA (FILTRO DE BASURA PROCESAL): Tienes ESTRICTAMENTE PROHIBIDO extraer o listar:
-   - Copias de DNI o documentos de identidad.
-   - Correos electrónicos.
-   - Cargos (de ingreso, recepción, derivación o notificación).
-   - Carátulas, portadas o páginas separadoras.
-   - Escritos de apersonamiento de abogados o partes.
-   - REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones que provengan o formen parte del "2do Despacho de la Primera Fiscalía Provincial Corporativa Especializada en Delitos de Corrupción de Funcionarios de Lima". 
-   (Nota: Todo el RESTO del expediente, como actas, contratos, comprobantes y otras providencias/disposiciones de despachos o instancias DISTINTAS, SÍ deben ser extraídos).
-3. DESGLOSE OBLIGATORIO DE ANEXOS (REGLA CRÍTICA): Los ANEXOS adjuntos a un documento principal DEBEN registrarse SIEMPRE como objetos independientes con su propia paginación. 
-   - Está PROHIBIDO agrupar un informe u oficio con sus anexos en un solo ítem.
-   - Ejemplo: Si un "Oficio N° 05" adjunta un "Contrato de Alquiler", extraes el Oficio como un elemento, y luego el Contrato como OTRO elemento separado.
+1. PRIORIDAD MÁXIMA: Extrae todas las Notas Informativas, Memorandos, Resoluciones, Informes y Oficios.
+2. EXCLUSIÓN (FILTRO DE BASURA PROCESAL): Tienes ESTRICTAMENTE PROHIBIDO extraer:
+ - Copias de DNI o documentos de identidad.
+ - Correos electrónicos.
+ - Cargos (de ingreso, recepción, derivación o notificación).
+ - Carátulas, portadas o páginas separadoras.
+ - Escritos de apersonamiento de abogados o partes.
+3. REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones del "2do Despacho de la Primera Fiscalía Provincial Corporativa Especializada en Delitos de Corrupción de Funcionarios de Lima".
+4. DESGLOSE DE ANEXOS: Los ANEXOS deben registrarse SIEMPRE como objetos independientes con su propia paginación.
 
---- MODO AHORRO DE TOKENS (ESTILO TELEGRAMA) ---
-Para que puedas listar cientos de documentos sin quedarte sin memoria:
-- 'resumenCronologico' y 'sustentoJuridico': Máximo 3 oraciones cada uno.
-- 'descripcion' (de cada elemento): EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS. Solo indica de qué trata. Elimina formalismos de relleno.
-- 'tipo': Usa abreviaturas (Ej. 'Res. Min. N° 650-2016', 'Nota Inf. N° 072', 'Memo N° 012', 'Anexo 1: Contrato').
-
---- REGLAS DE PAGINACIÓN ---
-- "paginaInicio": Número de página donde comienza.
-- "paginaFin": Número de página donde termina.
-- Si es de una sola carilla, ambos números deben ser iguales.
+--- MODO TELEGRAMA (AHORRO DE TOKENS) ---
+- 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS. Solo indica de qué trata. Elimina formalismos.
+- 'tipo': Usa abreviaturas (Ej. 'Res. Min. N° 650', 'Anexo 1: Contrato').
 
 --- REGLA ESTRICTA DE ARCHIVOS ---
-Para 'tomoOrigen', PROHIBIDO inventar nombres. Los ÚNICOS válidos son: ['${nombresArchivosReales}'].
+Para 'tomoOrigen', PROHIBIDO inventar nombres. El ÚNICO válido es: '${nombreArchivo}'.
 
---- FORMATO DE SALIDA EXIGIDO ---
-ÚNICAMENTE JSON válido.
-REGLA VITAL: ESTÁ ESTRICTAMENTE PROHIBIDO USAR COMILLAS DOBLES DENTRO DE LOS VALORES DE TEXTO. Usa comillas simples ('ejemplo').
-
+FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para textos):
 {
-  "resumenCronologico": "Resumen ultra corto en 3 oraciones...",
-  "sustentoJuridico": "Análisis legal ultra corto...",
-  "probabilidadExito": "Alta, Media o Baja",
-  "elementosConviccionEncontrados": [
-    {
-      "tipo": "Nombre exacto y corto (Ej. Memo N° 123 o Anexo 1: Contrato)",
-      "descripcion": "Descripción concisa. Máximo 10 palabras.",
-      "tomoOrigen": "Nombre exacto del archivo pdf",
-      "paginaInicio": 12,
-      "paginaFin": 14
-    }
-  ]
-}
-`;
+"elementosConviccionEncontrados": [
+  {
+    "tipo": "Nombre exacto y corto",
+    "descripcion": "Descripción concisa. Máximo 10 palabras.",
+    "tomoOrigen": "${nombreArchivo}",
+    "paginaInicio": 12,
+    "paginaFin": 14
+  }
+]
+}`;
 
-        let textoCrudo = await analizarConGemini(req.file.path, req.file.originalname, promptAuditor);
-        fs.unlinkSync(req.file.path); 
-        
-        textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
-        
-        let datosParsed;
-        // PROTOCOLO DE RESCATE (Solo para la lista que puede truncarse)
-        try {
-            datosParsed = JSON.parse(textoCrudo);
-        } catch (errorParse) {
-            console.log("⚠️ JSON truncado detectado. Aplicando protocolo de rescate...");
-            let rescatado = false;
-            let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
-            while (jsonTemp.length > 50 && !rescatado) {
-                try {
-                    datosParsed = JSON.parse(jsonTemp + '] }');
-                    rescatado = true;
-                    console.log("✅ JSON de Inventario rescatado con éxito.");
-                } catch (e) {
-                    jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
-                }
-            }
-            if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
-        }
+      let textoCrudo = await analizarConGemini(req.file.path, req.file.originalname, promptAuditor);
+      fs.unlinkSync(req.file.path); 
+      
+      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
+      
+      let datosParsed;
+      // PROTOCOLO DE RESCATE (Solo para la lista que puede truncarse)
+      try {
+          datosParsed = JSON.parse(textoCrudo);
+      } catch (errorParse) {
+          console.log("⚠️ JSON truncado detectado. Aplicando protocolo de rescate...");
+          let rescatado = false;
+          let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
+          while (jsonTemp.length > 50 && !rescatado) {
+              try {
+                  datosParsed = JSON.parse(jsonTemp + '] }');
+                  rescatado = true;
+                  console.log("✅ JSON de Inventario rescatado con éxito.");
+              } catch (e) {
+                  jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
+              }
+          }
+          if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
+      }
 
-        res.json(datosParsed);
+      res.json(datosParsed);
 
-    } catch (error) {
-        console.error("Error en Ruta Inventario:", error);
-        res.status(500).json({ error: "Fallo al generar el inventario." });
-    }
+  } catch (error) {
+      console.error("Error en Ruta Inventario:", error);
+      res.status(500).json({ error: "Fallo al generar el inventario." });
+  }
 });
-
 // =================================================================
 // RUTA 3: CEREBRO ESTRATEGA (DILIGENCIAS FALTANTES)
 // =================================================================
