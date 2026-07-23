@@ -2,7 +2,8 @@ const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
-const { GoogleGenerativeAI } = require('@google/generative-ai');              
+const { GoogleGenerativeAI } = require('@google/generative-ai'); 
+const { HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'); // <-- AGREGAR ESTA LÍNEA
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
 
 require('dotenv').config();
@@ -92,15 +93,22 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
     }
 
     // 2. Configurar el "Cerebro" (Modelo y Prompt)
+    // 2. Configurar el "Cerebro" (Modelo, Prompt y Apagar Filtros)
     const model = genAI.getGenerativeModel({
-        model: "gemini-3.5-flash", 
-        systemInstruction: systemPrompt,
-        generationConfig: {
-            responseMimeType: "application/json",
-            maxOutputTokens: 8192, 
-            temperature: 0.2, 
-        }
-    });
+      model: "gemini-3.5-flash", 
+      systemInstruction: systemPrompt,
+      generationConfig: {
+          responseMimeType: "application/json",
+          maxOutputTokens: 8192, 
+          temperature: 0.2, 
+      },
+      safetySettings: [
+          { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.BLOCK_NONE },
+          { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
+      ]
+  });
 
     // 3. Armar la lista de archivos para inyectarlos en orden
     const fileParts = tickets.map(t => ({
@@ -165,32 +173,36 @@ app.post('/api/inventario', async (req, res) => {
       const nombresArchivos = tickets.map(t => t.nombre).join("', '");
 
       const promptAuditor = `
-Eres un Auditor Forense Documental. Tu ÚNICA tarea es extraer los Elementos de Convicción del expediente adjunto.
-El expediente está dividido en varias partes, analízalas secuencialmente.
+Eres un Fiscal Investigador y Auditor Forense Documental experto en delitos de corrupción en Perú.
+
+--- ALERTA DE MULTI-ARCHIVOS (¡IMPORTANTE!) ---
+ATENCIÓN: Se han adjuntado ${tickets.length} archivos PDF que conforman un solo expediente.
+ES OBLIGATORIO que analices LOS ${tickets.length} ARCHIVOS secuencialmente. Extrae los elementos de TODOS los archivos adjuntos, no te detengas al terminar el primero.
 
 --- METODOLOGÍA DE EXTRACCIÓN Y PRIORIDADES ---
-1. PRIORIDAD MÁXIMA: Extrae todas las Notas Informativas, Memorandos, Resoluciones, Informes y Oficios.
-2. EXCLUSIÓN: Tienes ESTRICTAMENTE PROHIBIDO extraer Copias de DNI, Correos, Cargos, Carátulas y Escritos de apersonamiento.
+1. PRIORIDAD MÁXIMA (LA CARNE DEL CASO): Debes buscar activamente y asegurar la extracción de toda: Nota Informativa, Memorando, Resolución, Informes y Oficios.
+2. EXCLUSIÓN ESPECÍFICA (FILTRO DE BASURA PROCESAL): Tienes ESTRICTAMENTE PROHIBIDO extraer: DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento.
+   (Nota: Todo el RESTO del expediente, como actas, contratos y providencias relevantes, SÍ debe ser extraído).
 3. REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones del "2do Despacho de la Primera Fiscalía Provincial Corporativa Especializada en Delitos de Corrupción de Funcionarios de Lima".
-4. DESGLOSE DE ANEXOS: Los ANEXOS deben registrarse SIEMPRE como objetos independientes.
+4. DESGLOSE OBLIGATORIO DE ANEXOS: Los ANEXOS DEBEN registrarse SIEMPRE como objetos independientes.
 
---- MODO TELEGRAMA ---
-- 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS.
+--- MODO AHORRO DE TOKENS (ESTILO TELEGRAMA) ---
+- 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS. Solo indica de qué trata. Elimina formalismos de relleno.
 
 --- REGLA ESTRICTA DE ARCHIVOS ---
 Para 'tomoOrigen', PROHIBIDO inventar nombres. Los ÚNICOS válidos son: ['${nombresArchivos}'].
 
-FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para textos):
+FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples):
 {
-"elementosConviccionEncontrados": [
-  {
-    "tipo": "Nombre exacto y corto",
-    "descripcion": "Descripción concisa. Máximo 10 palabras.",
-    "tomoOrigen": "Nombre exacto de la parte del archivo",
-    "paginaInicio": 12,
-    "paginaFin": 14
-  }
-]
+  "elementosConviccionEncontrados": [
+    {
+      "tipo": "Nombre exacto y corto",
+      "descripcion": "Descripción concisa. Máximo 10 palabras.",
+      "tomoOrigen": "Nombre exacto de la parte del archivo",
+      "paginaInicio": 12,
+      "paginaFin": 14
+    }
+  ]
 }`;
 
       let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
