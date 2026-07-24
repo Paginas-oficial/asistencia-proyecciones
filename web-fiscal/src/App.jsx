@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 
 export default function FiscalDashboard() {
-  // 🧭 GESTOR DE VISTAS (Pantallas independientes)
-  // Puede ser: 'dashboard', 'resumen', 'inventario', 'diligencias'
+  // 🧭 GESTOR DE VISTAS
   const [vistaActual, setVistaActual] = useState('dashboard');
 
   // 🧠 ESTADOS MULTI-ARCHIVO Y CARGA
@@ -22,7 +21,7 @@ export default function FiscalDashboard() {
   const API_BASE_URL = "https://api-fiscal-backend.onrender.com/api";
 
   // =====================================================================
-  // NUEVO: FUNCIONES DE LIMPIEZA POR TARJETA
+  // FUNCIONES DE LIMPIEZA
   // =====================================================================
   const limpiarResumen = () => {
     setFilesResumen([]);
@@ -46,46 +45,39 @@ export default function FiscalDashboard() {
   };
 
   // =====================================================================
-  // 1. LÓGICA DE EXTRACCIÓN DE PÁGINAS PDF (EL BOTÓN AZUL)
+  // 1. LÓGICA DE EXTRACCIÓN
   // =====================================================================
   const extraerPaginas = async (item) => {
     try {
       const archivoCorrecto = filesInventario.find(f => f.name === item.tomoOrigen);
       if (!archivoCorrecto) {
-        alert(`No se encontró el archivo original (${item.tomoOrigen}) para extraer las páginas.`);
+        alert(`No se encontró el archivo original (${item.tomoOrigen}).`);
         return;
       }
-
       const arrayBuffer = await archivoCorrecto.arrayBuffer();
       const pdfDoc = await PDFDocument.load(arrayBuffer);
       const pdfNuevo = await PDFDocument.create();
-
       let pagInicio = Math.max(1, item.paginaInicio);
       let pagFin = Math.min(pdfDoc.getPageCount(), item.paginaFin);
-
       const indices = [];
       for (let i = pagInicio - 1; i <= pagFin - 1; i++) { indices.push(i); }
-
       const paginasCopiadas = await pdfNuevo.copyPages(pdfDoc, indices);
       paginasCopiadas.forEach((pag) => pdfNuevo.addPage(pag));
-
       const pdfBytes = await pdfNuevo.save();
       const blob = new Blob([pdfBytes], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
-
       const a = document.createElement("a");
       a.href = url;
       a.download = `${item.tipo.replace(/[^a-zA-Z0-9]/g, '_')}_Pags_${pagInicio}-${pagFin}.pdf`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      console.error("Error al extraer páginas:", error);
-      alert("Error al cortar el PDF. Verifica que el archivo no esté protegido con contraseña.");
+      alert("Error al cortar el PDF. Verifica contraseñas.");
     }
   };
 
   // =====================================================================
-  // 2. LÓGICA DE EXPORTACIÓN A REPORTE PDF (GLOBAL)
+  // 2. LÓGICA DE EXPORTACIÓN
   // =====================================================================
   const generarPDF = (titulo, contenidoHTML) => {
     const ventana = window.open('', '_blank');
@@ -103,8 +95,8 @@ export default function FiscalDashboard() {
   };
 
   const exportarResumen = () => {
-    const html = `<h3>Resumen Cronológico</h3><p>${resultadoResumen.resumenCronologico}</p><h3>Sustento Jurídico</h3><p>${resultadoResumen.sustentoJuridico}</p><h3>Probabilidad de Éxito</h3><p><strong>${resultadoResumen.probabilidadExito}</strong></p>`;
-    generarPDF("Reporte de Resumen y Análisis Jurídico", html);
+    const html = `<h3>Cronológico</h3><p>${resultadoResumen.resumenCronologico}</p><h3>Sustento</h3><p>${resultadoResumen.sustentoJuridico}</p><h3>Éxito</h3><p><strong>${resultadoResumen.probabilidadExito}</strong></p>`;
+    generarPDF("Reporte de Resumen", html);
   };
 
   const exportarInventario = () => {
@@ -114,11 +106,11 @@ export default function FiscalDashboard() {
 
   const exportarDiligencias = () => {
     const itemsHtml = resultadoDiligencias.elementosFaltantes.map(item => `<div class="item" style="border-left-color: #ef4444;">${item}</div>`).join('');
-    generarPDF("Estrategia y Diligencias Faltantes", itemsHtml);
+    generarPDF("Estrategia Faltante", itemsHtml);
   };
 
   // =====================================================================
-  // 3. MOTOR DE SUBIDA Y LLAMADAS AL BACKEND
+  // 3. MOTOR DE SUBIDA
   // =====================================================================
   const subirPartesYObtenerTickets = async (archivos) => {
     const tickets = [];
@@ -126,7 +118,7 @@ export default function FiscalDashboard() {
         const formData = new FormData();
         formData.append("documentoPdf", archivos[i]);
         const res = await fetch(`${API_BASE_URL}/subir-tomo`, { method: "POST", body: formData });
-        if (!res.ok) throw new Error("Fallo al subir una parte");
+        if (!res.ok) throw new Error("Fallo al subir");
         const data = await res.json();
         tickets.push(data.ticket);
     }
@@ -134,81 +126,90 @@ export default function FiscalDashboard() {
   };
 
   const procesarResumen = async () => {
-    if (filesResumen.length === 0) return alert("Sube al menos una parte del PDF");
+    if (filesResumen.length === 0) return alert("Sube un PDF");
     setLoadingResumen(true); setResultadoResumen(null);
     try {
       const tickets = await subirPartesYObtenerTickets(filesResumen);
-      const respuesta = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      setResultadoResumen(await respuesta.json());
+      const res = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
+      setResultadoResumen(await res.json());
       setVistaActual('resumen');
-    } catch (error) { alert("Error en el proceso."); } finally { setLoadingResumen(false); }
+    } catch (e) { alert("Error"); } finally { setLoadingResumen(false); }
   };
 
   const procesarInventario = async () => {
-    if (filesInventario.length === 0) return alert("Sube al menos una parte del PDF");
+    if (filesInventario.length === 0) return alert("Sube un PDF");
     setLoadingInventario(true); setResultadoInventario(null);
     try {
       const tickets = await subirPartesYObtenerTickets(filesInventario);
-      const respuesta = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      setResultadoInventario(await respuesta.json());
+      const res = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
+      setResultadoInventario(await res.json());
       setVistaActual('inventario');
-    } catch (error) { alert("Error en el proceso."); } finally { setLoadingInventario(false); }
+    } catch (e) { alert("Error"); } finally { setLoadingInventario(false); }
   };
 
   const procesarDiligencias = async () => {
-    if (filesDiligencias.length === 0) return alert("Sube al menos una parte del PDF");
+    if (filesDiligencias.length === 0) return alert("Sube un PDF");
     setLoadingDiligencias(true); setResultadoDiligencias(null);
     try {
       const tickets = await subirPartesYObtenerTickets(filesDiligencias);
-      const respuesta = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      setResultadoDiligencias(await respuesta.json());
+      const res = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
+      setResultadoDiligencias(await res.json());
       setVistaActual('diligencias');
-    } catch (error) { alert("Error en el proceso."); } finally { setLoadingDiligencias(false); }
+    } catch (e) { alert("Error"); } finally { setLoadingDiligencias(false); }
   };
 
   // =====================================================================
-  // 4. DISEÑO VISUAL GLOBAL
+  // 4. NUEVO DISEÑO VISUAL PREMIUM (Estilo Foto)
   // =====================================================================
   const styles = {
-    container: { backgroundColor: '#0f172a', color: '#f8fafc', minHeight: '100vh', padding: '2rem', fontFamily: 'system-ui, sans-serif' },
-    card: { backgroundColor: '#1e293b', padding: '1.5rem', borderRadius: '12px', border: '1px solid #334155', display: 'flex', flexDirection: 'column' },
-    button: { width: '100%', padding: '0.75rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', border: 'none', color: '#fff', marginBottom: '1rem' },
-    btnExtract: { backgroundColor: '#2563eb', color: '#fff', padding: '8px 16px', borderRadius: '6px', fontSize: '0.9rem', cursor: 'pointer', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', transition: '0.2s' },
-    btnBack: { backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', marginBottom: '20px', fontWeight: 'bold' },
-    btnDownloadReport: { padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', border: '1px solid', background: 'transparent', fontWeight: 'bold', display: 'inline-block', marginTop: '20px' },
-    btnClean: { width: '100%', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'transparent', border: '1px dashed #475569', color: '#94a3b8', fontSize: '0.9rem', transition: '0.2s' }
+    // Fondo general más oscuro con un resplandor sutil en el centro superior
+    container: { 
+      backgroundColor: '#0a0d14', 
+      backgroundImage: 'radial-gradient(circle at 50% 0%, #172033 0%, #0a0d14 70%)',
+      color: '#f8fafc', 
+      minHeight: '100vh', 
+      padding: '2rem', 
+      fontFamily: 'system-ui, sans-serif' 
+    },
+    // Estructura base de las tarjetas estilo "Glassmorphism"
+    cardBase: { 
+      backgroundColor: 'rgba(30, 41, 59, 0.4)', // Semi-transparente
+      backdropFilter: 'blur(16px)', // Efecto cristal
+      WebkitBackdropFilter: 'blur(16px)',
+      padding: '2rem', 
+      borderRadius: '28px', // Bordes redondeados como en tu imagen
+      border: '1px solid rgba(255, 255, 255, 0.05)', 
+      display: 'flex', 
+      flexDirection: 'column',
+      position: 'relative',
+      overflow: 'hidden'
+    },
+    button: { width: '100%', padding: '0.85rem', borderRadius: '14px', fontWeight: 'bold', cursor: 'pointer', border: 'none', color: '#fff', marginBottom: '1rem', transition: '0.2s', textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.85rem' },
+    btnExtract: { backgroundColor: '#2563eb', color: '#fff', padding: '8px 16px', borderRadius: '10px', fontSize: '0.9rem', cursor: 'pointer', border: 'none', fontWeight: 'bold' },
+    btnBack: { backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '10px 20px', borderRadius: '12px', cursor: 'pointer', marginBottom: '20px', fontWeight: 'bold' },
+    btnDownloadReport: { padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', border: '1px solid', background: 'transparent', fontWeight: 'bold', display: 'inline-block', marginTop: '20px' },
+    btnClean: { width: '100%', padding: '0.6rem', borderRadius: '12px', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: '#94a3b8', fontSize: '0.85rem' }
   };
 
   // =====================================================================
-  // RENDERIZADO CONDICIONAL DE PANTALLAS
+  // RENDERIZADO CONDICIONAL DE PANTALLAS (RESULTADOS)
   // =====================================================================
-
   if (vistaActual === 'inventario' && resultadoInventario) {
     return (
       <div style={styles.container}>
-        <button onClick={() => setVistaActual('dashboard')} style={styles.btnBack}>← Volver al Panel Principal</button>
-        <div style={{ maxWidth: '900px', margin: '0 auto', backgroundColor: '#1e293b', padding: '30px', borderRadius: '12px', borderTop: '5px solid #10b981' }}>
-          <h2 style={{ color: '#34d399', fontSize: '2rem', marginTop: 0 }}>🕵️‍♂️ Elementos de Convicción Encontrados</h2>
-          <p style={{ color: '#94a3b8', fontSize: '1.1rem', marginBottom: '30px' }}>Se extrajeron {resultadoInventario.elementosConviccionEncontrados?.length} elementos relevantes.</p>
-          
+        <button onClick={() => setVistaActual('dashboard')} style={styles.btnBack}>← Volver al Panel</button>
+        <div style={{ ...styles.cardBase, maxWidth: '900px', margin: '0 auto', boxShadow: '0 0 40px rgba(16, 185, 129, 0.1)' }}>
+          <h2 style={{ color: '#34d399', fontSize: '2rem', marginTop: 0 }}>🕵️‍♂️ Elementos Encontrados</h2>
           {resultadoInventario.elementosConviccionEncontrados?.map((item, index) => (
-            <div key={index} style={{ backgroundColor: '#0f172a', padding: '20px', borderRadius: '8px', marginBottom: '20px', borderLeft: '4px solid #34d399' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
-                <div>
-                  <strong style={{ color: '#6ee7b7', fontSize: '1.3rem', display: 'block' }}>{item.tipo}</strong>
-                  <span style={{ fontSize: '0.85rem', color: '#64748b' }}>Archivo: {item.tomoOrigen}</span>
-                </div>
-                <button onClick={() => extraerPaginas(item)} style={styles.btnExtract}>
-                  📥 Bajar Págs. {item.paginaInicio} - {item.paginaFin}
-                </button>
+            <div key={index} style={{ backgroundColor: 'rgba(0,0,0,0.2)', padding: '20px', borderRadius: '16px', marginBottom: '15px', borderLeft: '4px solid #34d399' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+                <div><strong style={{ color: '#6ee7b7', fontSize: '1.2rem', display: 'block' }}>{item.tipo}</strong><span style={{ fontSize: '0.85rem', color: '#64748b' }}>Archivo: {item.tomoOrigen}</span></div>
+                <button onClick={() => extraerPaginas(item)} style={styles.btnExtract}>📥 Bajar Págs. {item.paginaInicio} - {item.paginaFin}</button>
               </div>
-              <p style={{ margin: '15px 0 0 0', color: '#cbd5e1', fontSize: '1.05rem', lineHeight: '1.5' }}>{item.descripcion}</p>
+              <p style={{ margin: '10px 0 0 0', color: '#cbd5e1' }}>{item.descripcion}</p>
             </div>
           ))}
-
-          <button onClick={exportarInventario} style={{ ...styles.btnDownloadReport, color: '#34d399', borderColor: '#34d399' }}>
-            📄 Descargar Reporte PDF para Carpeta Fiscal
-          </button>
+          <button onClick={exportarInventario} style={{ ...styles.btnDownloadReport, color: '#34d399', borderColor: '#34d399' }}>📄 Descargar Reporte PDF</button>
         </div>
       </div>
     );
@@ -217,25 +218,13 @@ export default function FiscalDashboard() {
   if (vistaActual === 'resumen' && resultadoResumen) {
     return (
       <div style={styles.container}>
-        <button onClick={() => setVistaActual('dashboard')} style={styles.btnBack}>← Volver al Panel Principal</button>
-        <div style={{ maxWidth: '900px', margin: '0 auto', backgroundColor: '#1e293b', padding: '30px', borderRadius: '12px', borderTop: '5px solid #3b82f6' }}>
-          <h2 style={{ color: '#60a5fa', fontSize: '2rem', marginTop: 0 }}>🧠 Resumen y Análisis Jurídico</h2>
-          
-          <h3 style={{ color: '#93c5fd', marginTop: '20px' }}>Resumen Cronológico:</h3>
-          <p style={{ color: '#cbd5e1', lineHeight: '1.7', fontSize: '1.1rem' }}>{resultadoResumen.resumenCronologico}</p>
-          
-          <h3 style={{ color: '#93c5fd', marginTop: '30px' }}>Sustento Jurídico:</h3>
-          <p style={{ color: '#cbd5e1', lineHeight: '1.7', fontSize: '1.1rem' }}>{resultadoResumen.sustentoJuridico}</p>
-          
-          <h3 style={{ color: '#93c5fd', marginTop: '30px' }}>Probabilidad de Éxito:</h3>
-          <span style={{ padding: '5px 15px', borderRadius: '20px', backgroundColor: '#2563eb', color: '#fff', fontWeight: 'bold' }}>
-            {resultadoResumen.probabilidadExito}
-          </span>
-
-          <br/>
-          <button onClick={exportarResumen} style={{ ...styles.btnDownloadReport, color: '#60a5fa', borderColor: '#60a5fa', marginTop: '40px' }}>
-            📄 Descargar Reporte PDF
-          </button>
+        <button onClick={() => setVistaActual('dashboard')} style={styles.btnBack}>← Volver al Panel</button>
+        <div style={{ ...styles.cardBase, maxWidth: '900px', margin: '0 auto', boxShadow: '0 0 40px rgba(59, 130, 246, 0.1)' }}>
+          <h2 style={{ color: '#60a5fa', fontSize: '2rem', marginTop: 0 }}>🧠 Análisis Jurídico</h2>
+          <h3 style={{ color: '#93c5fd' }}>Resumen:</h3><p style={{ color: '#cbd5e1' }}>{resultadoResumen.resumenCronologico}</p>
+          <h3 style={{ color: '#93c5fd' }}>Sustento:</h3><p style={{ color: '#cbd5e1' }}>{resultadoResumen.sustentoJuridico}</p>
+          <h3 style={{ color: '#93c5fd' }}>Éxito:</h3><span style={{ padding: '8px 16px', borderRadius: '12px', backgroundColor: '#2563eb', color: '#fff', fontWeight: 'bold' }}>{resultadoResumen.probabilidadExito}</span>
+          <br/><button onClick={exportarResumen} style={{ ...styles.btnDownloadReport, color: '#60a5fa', borderColor: '#60a5fa' }}>📄 Descargar Reporte PDF</button>
         </div>
       </div>
     );
@@ -244,114 +233,99 @@ export default function FiscalDashboard() {
   if (vistaActual === 'diligencias' && resultadoDiligencias) {
     return (
       <div style={styles.container}>
-        <button onClick={() => setVistaActual('dashboard')} style={styles.btnBack}>← Volver al Panel Principal</button>
-        <div style={{ maxWidth: '900px', margin: '0 auto', backgroundColor: '#1e293b', padding: '30px', borderRadius: '12px', borderTop: '5px solid #ef4444' }}>
-          <h2 style={{ color: '#f87171', fontSize: '2rem', marginTop: 0 }}>🎯 Diligencias Faltantes Sugeridas</h2>
-          <p style={{ color: '#94a3b8', fontSize: '1.1rem', marginBottom: '30px' }}>Se identificaron los siguientes vacíos en la investigación:</p>
-          
-          <ul style={{ paddingLeft: '20px' }}>
-            {resultadoDiligencias.elementosFaltantes?.map((diligencia, index) => (
-              <li key={index} style={{ marginBottom: '15px', color: '#fca5a5', fontSize: '1.1rem', lineHeight: '1.5' }}>
-                <span style={{ color: '#cbd5e1' }}>{diligencia}</span>
-              </li>
-            ))}
-          </ul>
-
-          <button onClick={exportarDiligencias} style={{ ...styles.btnDownloadReport, color: '#f87171', borderColor: '#f87171' }}>
-            📄 Descargar Reporte PDF
-          </button>
+        <button onClick={() => setVistaActual('dashboard')} style={styles.btnBack}>← Volver al Panel</button>
+        <div style={{ ...styles.cardBase, maxWidth: '900px', margin: '0 auto', boxShadow: '0 0 40px rgba(239, 68, 68, 0.1)' }}>
+          <h2 style={{ color: '#f87171', fontSize: '2rem', marginTop: 0 }}>🎯 Estrategia Faltante</h2>
+          <ul>{resultadoDiligencias.elementosFaltantes?.map((diligencia, i) => <li key={i} style={{ color: '#fca5a5', marginBottom: '10px' }}>{diligencia}</li>)}</ul>
+          <button onClick={exportarDiligencias} style={{ ...styles.btnDownloadReport, color: '#f87171', borderColor: '#f87171' }}>📄 Descargar Reporte PDF</button>
         </div>
       </div>
     );
   }
 
   // =====================================================================
-  // PANTALLA PRINCIPAL: EL DASHBOARD DE LAS 3 TARJETAS
+  // PANTALLA PRINCIPAL: EL DASHBOARD DE LAS 3 TARJETAS NEÓN
   // =====================================================================
   return (
     <div style={styles.container}>
-      <h1 style={{ textAlign: 'center', marginBottom: '3rem', fontSize: '2.5rem' }}>Asistencia de Proyecciones Fiscales</h1>
+      <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
+        <h1 style={{ fontSize: '3rem', margin: '0', background: 'linear-gradient(to right, #fff, #94a3b8)', WebkitBackgroundClip: 'text', color: 'transparent', letterSpacing: '-1px' }}>
+          Sistema Fiscal
+        </h1>
+        <p style={{ color: '#64748b', fontSize: '1.2rem', marginTop: '10px' }}>Asistencia de Proyecciones Estratégicas</p>
+      </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '2.5rem', maxWidth: '1300px', margin: '0 auto' }}>
         
-        {/* TARJETA 1: RESUMEN */}
-        <div style={{ ...styles.card, borderTop: '4px solid #3b82f6' }}>
-          <h2 style={{ color: '#60a5fa', fontWeight: 'bold' }}>🧠 Resumen y Análisis</h2>
-          <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Analiza hechos, cronología y sustento legal.</p>
+        {/* TARJETA 1: AZUL (RESUMEN) */}
+        <div style={{ 
+          ...styles.cardBase, 
+          boxShadow: '0 15px 35px -5px rgba(59, 130, 246, 0.2), inset 0 0 20px rgba(59, 130, 246, 0.05)',
+          borderTop: '1px solid rgba(59, 130, 246, 0.4)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🧠</div>
+            <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Resumen</h2>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem' }}>Analiza hechos, cronología y sustento legal del expediente.</p>
           
-          {/* NUEVO: Se agregó el id="input-resumen" */}
-          <input id="input-resumen" type="file" multiple accept="application/pdf" onChange={(e) => setFilesResumen(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
-          {filesResumen.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesResumen.length} partes listas</span>}
+          <input id="input-resumen" type="file" multiple accept="application/pdf" onChange={(e) => setFilesResumen(Array.from(e.target.files))} style={{ marginBottom: '1.5rem', color: '#94a3b8', fontSize: '0.9rem' }} />
+          {filesResumen.length > 0 && <span style={{ color: '#60a5fa', fontSize: '0.85rem', marginBottom: '1rem', display: 'block', fontWeight: 'bold' }}>📁 {filesResumen.length} archivos listos</span>}
           
-          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button onClick={procesarResumen} disabled={loadingResumen} style={{ ...styles.button, backgroundColor: loadingResumen ? '#475569' : '#2563eb', marginBottom: '0' }}>
-              {loadingResumen ? "Analizando el expediente..." : "Generar Resumen"}
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button onClick={procesarResumen} disabled={loadingResumen} style={{ ...styles.button, backgroundColor: loadingResumen ? '#334155' : '#2563eb', boxShadow: loadingResumen ? 'none' : '0 4px 15px rgba(37, 99, 235, 0.4)' }}>
+              {loadingResumen ? "Procesando..." : "Generar Análisis"}
             </button>
-            
-            {resultadoResumen && (
-              <button onClick={() => setVistaActual('resumen')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #60a5fa', color: '#60a5fa', marginBottom: '0' }}>
-                👁️ Ver Resumen Anterior
-              </button>
-            )}
-
-            {/* NUEVO: BOTÓN DE LIMPIEZA */}
-            <button onClick={limpiarResumen} style={styles.btnClean}>
-              🧹 Limpiar Tarjeta
-            </button>
+            {resultadoResumen && <button onClick={() => setVistaActual('resumen')} style={{ ...styles.button, backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}>👁️ Ver Resultado</button>}
+            <button onClick={limpiarResumen} style={styles.btnClean}>🧹 Limpiar</button>
           </div>
         </div>
 
-        {/* TARJETA 2: INVENTARIO PROBATORIO */}
-        <div style={{ ...styles.card, borderTop: '4px solid #10b981' }}>
-          <h2 style={{ color: '#34d399', fontWeight: 'bold' }}>🕵️‍♂️ Elementos de Convicción</h2>
-          <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Extrae documentos e ignora el ruido procesal. Corta el PDF exacto.</p>
+        {/* TARJETA 2: VERDE (INVENTARIO) */}
+        <div style={{ 
+          ...styles.cardBase, 
+          boxShadow: '0 15px 35px -5px rgba(16, 185, 129, 0.2), inset 0 0 20px rgba(16, 185, 129, 0.05)',
+          borderTop: '1px solid rgba(16, 185, 129, 0.4)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🕵️‍♂️</div>
+            <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Inventario</h2>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem' }}>Extrae pruebas e ignora el ruido procesal. Corta el PDF exacto.</p>
           
-          {/* NUEVO: Se agregó el id="input-inventario" */}
-          <input id="input-inventario" type="file" multiple accept="application/pdf" onChange={(e) => setFilesInventario(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
-          {filesInventario.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesInventario.length} partes listas</span>}
+          <input id="input-inventario" type="file" multiple accept="application/pdf" onChange={(e) => setFilesInventario(Array.from(e.target.files))} style={{ marginBottom: '1.5rem', color: '#94a3b8', fontSize: '0.9rem' }} />
+          {filesInventario.length > 0 && <span style={{ color: '#34d399', fontSize: '0.85rem', marginBottom: '1rem', display: 'block', fontWeight: 'bold' }}>📁 {filesInventario.length} archivos listos</span>}
           
-          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button onClick={procesarInventario} disabled={loadingInventario} style={{ ...styles.button, backgroundColor: loadingInventario ? '#475569' : '#059669', marginBottom: '0' }}>
-              {loadingInventario ? "Extrayendo pruebas..." : "Generar Inventario"}
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button onClick={procesarInventario} disabled={loadingInventario} style={{ ...styles.button, backgroundColor: loadingInventario ? '#334155' : '#059669', boxShadow: loadingInventario ? 'none' : '0 4px 15px rgba(5, 150, 105, 0.4)' }}>
+              {loadingInventario ? "Procesando..." : "Generar Inventario"}
             </button>
-
-            {resultadoInventario && (
-              <button onClick={() => setVistaActual('inventario')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #34d399', color: '#34d399', marginBottom: '0' }}>
-                👁️ Ver Elementos Extraídos
-              </button>
-            )}
-
-            {/* NUEVO: BOTÓN DE LIMPIEZA */}
-            <button onClick={limpiarInventario} style={styles.btnClean}>
-              🧹 Limpiar Tarjeta
-            </button>
+            {resultadoInventario && <button onClick={() => setVistaActual('inventario')} style={{ ...styles.button, backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}>👁️ Ver Resultado</button>}
+            <button onClick={limpiarInventario} style={styles.btnClean}>🧹 Limpiar</button>
           </div>
         </div>
 
-        {/* TARJETA 3: DILIGENCIAS FALTANTES */}
-        <div style={{ ...styles.card, borderTop: '4px solid #ef4444' }}>
-          <h2 style={{ color: '#f87171', fontWeight: 'bold' }}>🎯 Diligencias Faltantes</h2>
-          <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Identifica vacíos y sugiere actos procesales para formalizar.</p>
+        {/* TARJETA 3: ROJO (DILIGENCIAS) */}
+        <div style={{ 
+          ...styles.cardBase, 
+          boxShadow: '0 15px 35px -5px rgba(239, 68, 68, 0.2), inset 0 0 20px rgba(239, 68, 68, 0.05)',
+          borderTop: '1px solid rgba(239, 68, 68, 0.4)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🎯</div>
+            <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Diligencias</h2>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem' }}>Identifica vacíos y sugiere actos procesales para formalizar.</p>
           
-          {/* NUEVO: Se agregó el id="input-diligencias" */}
-          <input id="input-diligencias" type="file" multiple accept="application/pdf" onChange={(e) => setFilesDiligencias(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
-          {filesDiligencias.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesDiligencias.length} partes listas</span>}
+          <input id="input-diligencias" type="file" multiple accept="application/pdf" onChange={(e) => setFilesDiligencias(Array.from(e.target.files))} style={{ marginBottom: '1.5rem', color: '#94a3b8', fontSize: '0.9rem' }} />
+          {filesDiligencias.length > 0 && <span style={{ color: '#f87171', fontSize: '0.85rem', marginBottom: '1rem', display: 'block', fontWeight: 'bold' }}>📁 {filesDiligencias.length} archivos listos</span>}
           
-          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <button onClick={procesarDiligencias} disabled={loadingDiligencias} style={{ ...styles.button, backgroundColor: loadingDiligencias ? '#475569' : '#dc2626', marginBottom: '0' }}>
-              {loadingDiligencias ? "Evaluando estrategia..." : "Analizar Estrategia"}
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button onClick={procesarDiligencias} disabled={loadingDiligencias} style={{ ...styles.button, backgroundColor: loadingDiligencias ? '#334155' : '#dc2626', boxShadow: loadingDiligencias ? 'none' : '0 4px 15px rgba(220, 38, 38, 0.4)' }}>
+              {loadingDiligencias ? "Procesando..." : "Analizar Estrategia"}
             </button>
-
-            {resultadoDiligencias && (
-              <button onClick={() => setVistaActual('diligencias')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #f87171', color: '#f87171', marginBottom: '0' }}>
-                👁️ Ver Estrategia Anterior
-              </button>
-            )}
-
-            {/* NUEVO: BOTÓN DE LIMPIEZA */}
-            <button onClick={limpiarDiligencias} style={styles.btnClean}>
-              🧹 Limpiar Tarjeta
-            </button>
+            {resultadoDiligencias && <button onClick={() => setVistaActual('diligencias')} style={{ ...styles.button, backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}>👁️ Ver Resultado</button>}
+            <button onClick={limpiarDiligencias} style={styles.btnClean}>🧹 Limpiar</button>
           </div>
         </div>
 
