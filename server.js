@@ -166,88 +166,87 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 // =================================================================
 // RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO) - VERSIÓN ALIAS
 // =================================================================
+// =================================================================
+// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO - MODO ITERATIVO)
+// =================================================================
 app.post('/api/inventario', async (req, res) => {
   try {
       const { tickets } = req.body;
       if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
-      // 🌟 EL TRUCO MAESTRO: Crear un "Diccionario de Alias"
-      // En lugar de hacer que la IA escriba nombres gigantes, le damos alias cortos.
-      const diccionarioAlias = {};
-      const nombresAlias = [];
-      
-      tickets.forEach((t, index) => {
-          const alias = `Tomo_${index + 1}`;
-          diccionarioAlias[alias] = t.nombre; // Guardamos en secreto: { 'Tomo_1': 'C.F 623-2024...' }
-          nombresAlias.push(alias);
-      });
+      // Esta es la caja fuerte donde guardaremos los elementos de todos los tomos
+      let inventarioGlobal = [];
 
-      const promptAuditor = `
+      console.log(`[Ruta 2] Iniciando análisis ITERATIVO de ${tickets.length} partes...`);
+
+      // 🌟 EL TRUCO MAESTRO: Un Bucle que analiza archivo por archivo
+      for (let i = 0; i < tickets.length; i++) {
+          const ticket = tickets[i];
+          console.log(`[Ruta 2] Analizando Tomo ${i + 1} de ${tickets.length}: ${ticket.nombre}`);
+
+          const promptAuditor = `
 Eres un Fiscal Investigador y Auditor Forense Documental.
-Analiza LOS ${tickets.length} ARCHIVOS secuencialmente de inicio a fin. Extrae absolutamente todos los elementos relevantes.
+Analiza ÚNICAMENTE ESTE ARCHIVO en su totalidad.
 
---- METODOLOGÍA DE EXTRACCIÓN ---
+--- METODOLOGÍA ---
 1. EXTRAER SÍ O SÍ: Notas Informativas, Memorandos, Resoluciones, Informes, Oficios, Actas y Contratos.
-2. IGNORAR (BASURA PROCESAL): DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento.
-3. IGNORAR: Providencias del "2do Despacho de la Primera Fiscalía Provincial Corporativa".
+2. IGNORAR: DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento.
 
---- REGLAS DE SINTAXIS JSON (¡CRÍTICO!) ---
-1. PROHIBIDO usar comillas dobles (") dentro de los textos. Usa simples (').
+--- REGLAS ESTRICTAS DE SINTAXIS ---
+1. PROHIBIDO usar comillas dobles (") dentro de las descripciones. Usa simples (').
 2. NO uses saltos de línea (Enters) dentro de las descripciones.
 3. 'descripcion': MÁXIMO 10 PALABRAS.
-4. OBLIGATORIO: Genera el JSON completo hasta cerrar la última llave '}'. No te detengas a medias.
+4. 'tomoOrigen': DEBES USAR EXACTAMENTE ESTE TEXTO: '${ticket.nombre}'
 
---- REGLA ESTRICTA DE ARCHIVOS (USO DE ALIAS) ---
-Para 'tomoOrigen', TIENES PROHIBIDO usar los nombres reales. 
-Usa ÚNICAMENTE estos alias cortos exactos: ['${nombresAlias.join("', '")}'].
-
-FORMATO EXIGIDO (JSON VÁLIDO):
-ESTÁ ESTRICTAMENTE PROHIBIDO decir "Aquí tienes el JSON" o cualquier otra palabra. 
-TU RESPUESTA DEBE EMPEZAR CON '{' Y TERMINAR CON '}'. NO GASTES TOKENS EN NADA MÁS.
+FORMATO EXIGIDO (ÚNICAMENTE JSON):
+NO digas "Aquí tienes el JSON". Empieza directo con la llave '{'.
 {
-  "elementosConviccionEncontrados": [
-    {
-      "tipo": "Nombre corto (Ej. Informe N 070-2023)",
-      "descripcion": "Texto breve",
-      "tomoOrigen": "Tomo_1",
-      "paginaInicio": 12,
-      "paginaFin": 14
-    }
-  ]
+"elementosConviccionEncontrados": [
+  {
+    "tipo": "Nombre corto (Ej. Informe N 070)",
+    "descripcion": "Texto breve",
+    "tomoOrigen": "${ticket.nombre}",
+    "paginaInicio": 12,
+    "paginaFin": 14
+  }
+]
 }`;
 
-      let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
-      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
-      
-      let datosParsed;
-      try {
-          datosParsed = JSON.parse(textoCrudo);
-          console.log("[Ruta 2] ✅ JSON procesado perfectamente y sin cortes.");
-      } catch (errorParse) {
-          console.log("⚠️ ERROR DE SINTAXIS JSON. Aplicando rescate...");
-          let rescatado = false;
-          let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
-          while (jsonTemp.length > 20 && !rescatado) {
-              try {
-                  datosParsed = JSON.parse(jsonTemp + '] }');
-                  rescatado = true;
-              } catch (e) {
-                  jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
+          // Le enviamos SOLO UN TICKET al motor, es imposible que se quede sin tokens
+          let textoCrudo = await analizarTicketsConGemini([ticket], promptAuditor);
+          textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
+          
+          try {
+              const datosParsed = JSON.parse(textoCrudo);
+              if (datosParsed.elementosConviccionEncontrados) {
+                  // Si el JSON es perfecto, sumamos estas pruebas a la caja fuerte
+                  inventarioGlobal = inventarioGlobal.concat(datosParsed.elementosConviccionEncontrados);
+                  console.log(`  -> ✅ ${datosParsed.elementosConviccionEncontrados.length} elementos extraídos del Tomo ${i+1}.`);
+              }
+          } catch (errorParse) {
+              console.log(`  -> ⚠️ Error de sintaxis en el Tomo ${i+1}. Aplicando rescate de emergencia...`);
+              let rescatado = false;
+              let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
+              
+              while (jsonTemp.length > 20 && !rescatado) {
+                  try {
+                      const datosTemp = JSON.parse(jsonTemp + '] }');
+                      if (datosTemp.elementosConviccionEncontrados) {
+                          inventarioGlobal = inventarioGlobal.concat(datosTemp.elementosConviccionEncontrados);
+                          console.log(`  -> 🚑 Rescate exitoso: ${datosTemp.elementosConviccionEncontrados.length} elementos salvados.`);
+                      }
+                      rescatado = true;
+                  } catch (e) {
+                      jsonTemp = jsonTemp.substring(0, jsonTemp.lastIndexOf('}'));
+                  }
               }
           }
-          if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
       }
 
-      // 🌟 TRADUCCIÓN INVERSA: Le devolvemos el nombre real para el botón azul
-      if (datosParsed.elementosConviccionEncontrados && datosParsed.elementosConviccionEncontrados.length > 0) {
-          datosParsed.elementosConviccionEncontrados = datosParsed.elementosConviccionEncontrados.map(item => ({
-              ...item,
-              // Cambiamos mágicamente 'Tomo_1' de vuelta a su nombre larguísimo original
-              tomoOrigen: diccionarioAlias[item.tomoOrigen] || item.tomoOrigen 
-          }));
-      }
-
-      res.json(datosParsed);
+      console.log(`[Ruta 2] 🎉 Análisis finalizado. Total extraído en el expediente: ${inventarioGlobal.length} elementos.`);
+      
+      // Enviamos la caja fuerte completa a tu pantalla
+      res.json({ elementosConviccionEncontrados: inventarioGlobal });
 
   } catch (error) {
       console.error("Error en Ruta Inventario:", error);
