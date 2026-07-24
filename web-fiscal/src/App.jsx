@@ -246,6 +246,9 @@ export default function FiscalDashboard() {
   // =====================================================================
   // PANTALLA PRINCIPAL: EL DASHBOARD DE LAS 3 TARJETAS
   // =====================================================================
+  // =====================================================================
+  // PANTALLA PRINCIPAL: EL DASHBOARD DE LAS 3 TARJETAS
+  // =====================================================================
   return (
     <div style={styles.container}>
       <h1 style={{ textAlign: 'center', marginBottom: '3rem', fontSize: '2.5rem' }}>Asistencia de Proyecciones Fiscales</h1>
@@ -258,9 +261,19 @@ export default function FiscalDashboard() {
           <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Analiza hechos, cronología y sustento legal.</p>
           <input type="file" multiple accept="application/pdf" onChange={(e) => setFilesResumen(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
           {filesResumen.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesResumen.length} partes listas</span>}
-          <button onClick={procesarResumen} disabled={loadingResumen} style={{ ...styles.button, backgroundColor: loadingResumen ? '#475569' : '#2563eb', marginTop: 'auto' }}>
-            {loadingResumen ? "Analizando el expediente..." : "Generar Resumen"}
-          </button>
+          
+          <div style={{ marginTop: 'auto' }}>
+            <button onClick={procesarResumen} disabled={loadingResumen} style={{ ...styles.button, backgroundColor: loadingResumen ? '#475569' : '#2563eb', marginBottom: resultadoResumen ? '10px' : '0' }}>
+              {loadingResumen ? "Analizando el expediente..." : "Generar Resumen"}
+            </button>
+            
+            {/* NUEVO BOTÓN: VOLVER A RESUMEN */}
+            {resultadoResumen && (
+              <button onClick={() => setVistaActual('resumen')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #60a5fa', color: '#60a5fa', marginBottom: '0' }}>
+                👁️ Ver Resumen Anterior
+              </button>
+            )}
+          </div>
         </div>
 
         {/* TARJETA 2: INVENTARIO PROBATORIO */}
@@ -269,9 +282,19 @@ export default function FiscalDashboard() {
           <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Extrae documentos e ignora el ruido procesal. Corta el PDF exacto.</p>
           <input type="file" multiple accept="application/pdf" onChange={(e) => setFilesInventario(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
           {filesInventario.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesInventario.length} partes listas</span>}
-          <button onClick={procesarInventario} disabled={loadingInventario} style={{ ...styles.button, backgroundColor: loadingInventario ? '#475569' : '#059669', marginTop: 'auto' }}>
-            {loadingInventario ? "Extrayendo pruebas..." : "Generar Inventario"}
-          </button>
+          
+          <div style={{ marginTop: 'auto' }}>
+            <button onClick={procesarInventario} disabled={loadingInventario} style={{ ...styles.button, backgroundColor: loadingInventario ? '#475569' : '#059669', marginBottom: resultadoInventario ? '10px' : '0' }}>
+              {loadingInventario ? "Extrayendo pruebas..." : "Generar Inventario"}
+            </button>
+
+            {/* NUEVO BOTÓN: VOLVER A INVENTARIO */}
+            {resultadoInventario && (
+              <button onClick={() => setVistaActual('inventario')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #34d399', color: '#34d399', marginBottom: '0' }}>
+                👁️ Ver Elementos Extraídos
+              </button>
+            )}
+          </div>
         </div>
 
         {/* TARJETA 3: DILIGENCIAS FALTANTES */}
@@ -280,9 +303,19 @@ export default function FiscalDashboard() {
           <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Identifica vacíos y sugiere actos procesales para formalizar.</p>
           <input type="file" multiple accept="application/pdf" onChange={(e) => setFilesDiligencias(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
           {filesDiligencias.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesDiligencias.length} partes listas</span>}
-          <button onClick={procesarDiligencias} disabled={loadingDiligencias} style={{ ...styles.button, backgroundColor: loadingDiligencias ? '#475569' : '#dc2626', marginTop: 'auto' }}>
-            {loadingDiligencias ? "Evaluando estrategia..." : "Analizar Estrategia"}
-          </button>
+          
+          <div style={{ marginTop: 'auto' }}>
+            <button onClick={procesarDiligencias} disabled={loadingDiligencias} style={{ ...styles.button, backgroundColor: loadingDiligencias ? '#475569' : '#dc2626', marginBottom: resultadoDiligencias ? '10px' : '0' }}>
+              {loadingDiligencias ? "Evaluando estrategia..." : "Analizar Estrategia"}
+            </button>
+
+            {/* NUEVO BOTÓN: VOLVER A DILIGENCIAS */}
+            {resultadoDiligencias && (
+              <button onClick={() => setVistaActual('diligencias')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #f87171', color: '#f87171', marginBottom: '0' }}>
+                👁️ Ver Estrategia Anterior
+              </button>
+            )}
+          </div>
         </div>
 
       </div>
