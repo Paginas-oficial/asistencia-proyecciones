@@ -22,6 +22,30 @@ export default function FiscalDashboard() {
   const API_BASE_URL = "https://api-fiscal-backend.onrender.com/api";
 
   // =====================================================================
+  // NUEVO: FUNCIONES DE LIMPIEZA POR TARJETA
+  // =====================================================================
+  const limpiarResumen = () => {
+    setFilesResumen([]);
+    setResultadoResumen(null);
+    const input = document.getElementById('input-resumen');
+    if (input) input.value = '';
+  };
+
+  const limpiarInventario = () => {
+    setFilesInventario([]);
+    setResultadoInventario(null);
+    const input = document.getElementById('input-inventario');
+    if (input) input.value = '';
+  };
+
+  const limpiarDiligencias = () => {
+    setFilesDiligencias([]);
+    setResultadoDiligencias(null);
+    const input = document.getElementById('input-diligencias');
+    if (input) input.value = '';
+  };
+
+  // =====================================================================
   // 1. LÓGICA DE EXTRACCIÓN DE PÁGINAS PDF (EL BOTÓN AZUL)
   // =====================================================================
   const extraerPaginas = async (item) => {
@@ -116,7 +140,7 @@ export default function FiscalDashboard() {
       const tickets = await subirPartesYObtenerTickets(filesResumen);
       const respuesta = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
       setResultadoResumen(await respuesta.json());
-      setVistaActual('resumen'); // ¡Cambiamos de pantalla al terminar!
+      setVistaActual('resumen');
     } catch (error) { alert("Error en el proceso."); } finally { setLoadingResumen(false); }
   };
 
@@ -127,7 +151,7 @@ export default function FiscalDashboard() {
       const tickets = await subirPartesYObtenerTickets(filesInventario);
       const respuesta = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
       setResultadoInventario(await respuesta.json());
-      setVistaActual('inventario'); // ¡Cambiamos de pantalla al terminar!
+      setVistaActual('inventario');
     } catch (error) { alert("Error en el proceso."); } finally { setLoadingInventario(false); }
   };
 
@@ -138,7 +162,7 @@ export default function FiscalDashboard() {
       const tickets = await subirPartesYObtenerTickets(filesDiligencias);
       const respuesta = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
       setResultadoDiligencias(await respuesta.json());
-      setVistaActual('diligencias'); // ¡Cambiamos de pantalla al terminar!
+      setVistaActual('diligencias');
     } catch (error) { alert("Error en el proceso."); } finally { setLoadingDiligencias(false); }
   };
 
@@ -151,14 +175,14 @@ export default function FiscalDashboard() {
     button: { width: '100%', padding: '0.75rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', border: 'none', color: '#fff', marginBottom: '1rem' },
     btnExtract: { backgroundColor: '#2563eb', color: '#fff', padding: '8px 16px', borderRadius: '6px', fontSize: '0.9rem', cursor: 'pointer', border: 'none', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px', transition: '0.2s' },
     btnBack: { backgroundColor: 'transparent', color: '#94a3b8', border: '1px solid #475569', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', marginBottom: '20px', fontWeight: 'bold' },
-    btnDownloadReport: { padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', border: '1px solid', background: 'transparent', fontWeight: 'bold', display: 'inline-block', marginTop: '20px' }
+    btnDownloadReport: { padding: '10px 20px', borderRadius: '6px', cursor: 'pointer', border: '1px solid', background: 'transparent', fontWeight: 'bold', display: 'inline-block', marginTop: '20px' },
+    btnClean: { width: '100%', padding: '0.5rem', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'transparent', border: '1px dashed #475569', color: '#94a3b8', fontSize: '0.9rem', transition: '0.2s' }
   };
 
   // =====================================================================
   // RENDERIZADO CONDICIONAL DE PANTALLAS
   // =====================================================================
 
-  // PANTALLA 1: RESULTADOS DEL INVENTARIO (Pantalla limpia y amplia)
   if (vistaActual === 'inventario' && resultadoInventario) {
     return (
       <div style={styles.container}>
@@ -190,7 +214,6 @@ export default function FiscalDashboard() {
     );
   }
 
-  // PANTALLA 2: RESULTADOS DE RESUMEN
   if (vistaActual === 'resumen' && resultadoResumen) {
     return (
       <div style={styles.container}>
@@ -218,7 +241,6 @@ export default function FiscalDashboard() {
     );
   }
 
-  // PANTALLA 3: RESULTADOS DE DILIGENCIAS
   if (vistaActual === 'diligencias' && resultadoDiligencias) {
     return (
       <div style={styles.container}>
@@ -246,9 +268,6 @@ export default function FiscalDashboard() {
   // =====================================================================
   // PANTALLA PRINCIPAL: EL DASHBOARD DE LAS 3 TARJETAS
   // =====================================================================
-  // =====================================================================
-  // PANTALLA PRINCIPAL: EL DASHBOARD DE LAS 3 TARJETAS
-  // =====================================================================
   return (
     <div style={styles.container}>
       <h1 style={{ textAlign: 'center', marginBottom: '3rem', fontSize: '2.5rem' }}>Asistencia de Proyecciones Fiscales</h1>
@@ -259,20 +278,26 @@ export default function FiscalDashboard() {
         <div style={{ ...styles.card, borderTop: '4px solid #3b82f6' }}>
           <h2 style={{ color: '#60a5fa', fontWeight: 'bold' }}>🧠 Resumen y Análisis</h2>
           <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Analiza hechos, cronología y sustento legal.</p>
-          <input type="file" multiple accept="application/pdf" onChange={(e) => setFilesResumen(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
+          
+          {/* NUEVO: Se agregó el id="input-resumen" */}
+          <input id="input-resumen" type="file" multiple accept="application/pdf" onChange={(e) => setFilesResumen(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
           {filesResumen.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesResumen.length} partes listas</span>}
           
-          <div style={{ marginTop: 'auto' }}>
-            <button onClick={procesarResumen} disabled={loadingResumen} style={{ ...styles.button, backgroundColor: loadingResumen ? '#475569' : '#2563eb', marginBottom: resultadoResumen ? '10px' : '0' }}>
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button onClick={procesarResumen} disabled={loadingResumen} style={{ ...styles.button, backgroundColor: loadingResumen ? '#475569' : '#2563eb', marginBottom: '0' }}>
               {loadingResumen ? "Analizando el expediente..." : "Generar Resumen"}
             </button>
             
-            {/* NUEVO BOTÓN: VOLVER A RESUMEN */}
             {resultadoResumen && (
               <button onClick={() => setVistaActual('resumen')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #60a5fa', color: '#60a5fa', marginBottom: '0' }}>
                 👁️ Ver Resumen Anterior
               </button>
             )}
+
+            {/* NUEVO: BOTÓN DE LIMPIEZA */}
+            <button onClick={limpiarResumen} style={styles.btnClean}>
+              🧹 Limpiar Tarjeta
+            </button>
           </div>
         </div>
 
@@ -280,20 +305,26 @@ export default function FiscalDashboard() {
         <div style={{ ...styles.card, borderTop: '4px solid #10b981' }}>
           <h2 style={{ color: '#34d399', fontWeight: 'bold' }}>🕵️‍♂️ Elementos de Convicción</h2>
           <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Extrae documentos e ignora el ruido procesal. Corta el PDF exacto.</p>
-          <input type="file" multiple accept="application/pdf" onChange={(e) => setFilesInventario(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
+          
+          {/* NUEVO: Se agregó el id="input-inventario" */}
+          <input id="input-inventario" type="file" multiple accept="application/pdf" onChange={(e) => setFilesInventario(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
           {filesInventario.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesInventario.length} partes listas</span>}
           
-          <div style={{ marginTop: 'auto' }}>
-            <button onClick={procesarInventario} disabled={loadingInventario} style={{ ...styles.button, backgroundColor: loadingInventario ? '#475569' : '#059669', marginBottom: resultadoInventario ? '10px' : '0' }}>
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button onClick={procesarInventario} disabled={loadingInventario} style={{ ...styles.button, backgroundColor: loadingInventario ? '#475569' : '#059669', marginBottom: '0' }}>
               {loadingInventario ? "Extrayendo pruebas..." : "Generar Inventario"}
             </button>
 
-            {/* NUEVO BOTÓN: VOLVER A INVENTARIO */}
             {resultadoInventario && (
               <button onClick={() => setVistaActual('inventario')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #34d399', color: '#34d399', marginBottom: '0' }}>
                 👁️ Ver Elementos Extraídos
               </button>
             )}
+
+            {/* NUEVO: BOTÓN DE LIMPIEZA */}
+            <button onClick={limpiarInventario} style={styles.btnClean}>
+              🧹 Limpiar Tarjeta
+            </button>
           </div>
         </div>
 
@@ -301,20 +332,26 @@ export default function FiscalDashboard() {
         <div style={{ ...styles.card, borderTop: '4px solid #ef4444' }}>
           <h2 style={{ color: '#f87171', fontWeight: 'bold' }}>🎯 Diligencias Faltantes</h2>
           <p style={{ color: '#94a3b8', marginBottom: '1.5rem' }}>Identifica vacíos y sugiere actos procesales para formalizar.</p>
-          <input type="file" multiple accept="application/pdf" onChange={(e) => setFilesDiligencias(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
+          
+          {/* NUEVO: Se agregó el id="input-diligencias" */}
+          <input id="input-diligencias" type="file" multiple accept="application/pdf" onChange={(e) => setFilesDiligencias(Array.from(e.target.files))} style={{ marginBottom: '1rem', color: '#94a3b8' }} />
           {filesDiligencias.length > 0 && <span style={{ color: '#fbbf24', fontSize: '0.85rem', marginBottom: '1rem', display: 'block' }}>📁 {filesDiligencias.length} partes listas</span>}
           
-          <div style={{ marginTop: 'auto' }}>
-            <button onClick={procesarDiligencias} disabled={loadingDiligencias} style={{ ...styles.button, backgroundColor: loadingDiligencias ? '#475569' : '#dc2626', marginBottom: resultadoDiligencias ? '10px' : '0' }}>
+          <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <button onClick={procesarDiligencias} disabled={loadingDiligencias} style={{ ...styles.button, backgroundColor: loadingDiligencias ? '#475569' : '#dc2626', marginBottom: '0' }}>
               {loadingDiligencias ? "Evaluando estrategia..." : "Analizar Estrategia"}
             </button>
 
-            {/* NUEVO BOTÓN: VOLVER A DILIGENCIAS */}
             {resultadoDiligencias && (
               <button onClick={() => setVistaActual('diligencias')} style={{ ...styles.button, backgroundColor: 'transparent', border: '1px solid #f87171', color: '#f87171', marginBottom: '0' }}>
                 👁️ Ver Estrategia Anterior
               </button>
             )}
+
+            {/* NUEVO: BOTÓN DE LIMPIEZA */}
+            <button onClick={limpiarDiligencias} style={styles.btnClean}>
+              🧹 Limpiar Tarjeta
+            </button>
           </div>
         </div>
 
