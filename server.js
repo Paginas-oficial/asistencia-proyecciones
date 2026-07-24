@@ -111,21 +111,27 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
   });
 
     // 3. Armar la lista de archivos para inyectarlos en orden
+    // 3. Armar la lista de archivos para inyectarlos en orden
     const fileParts = tickets.map(t => ({
-        fileData: { fileUri: t.fileUri, mimeType: "application/pdf" }
-    }));
+      fileData: { fileUri: t.fileUri, mimeType: "application/pdf" }
+  }));
 
-    console.log("[Motor] Iniciando lectura cruzada de las partes...");
-    const result = await model.generateContent(fileParts);
-    const textoCrudo = result.response.text();
+  console.log("[Motor] Iniciando lectura cruzada de las partes...");
+  const result = await model.generateContent(fileParts);
+  
+  // 🚨 NUEVO DIAGNÓSTICO: Saber por qué se detuvo la IA
+  const razon = result.response.candidates[0]?.finishReason;
+  console.log(`[Motor] La IA terminó de escribir por: ${razon}`);
+  
+  const textoCrudo = result.response.text();
 
-    // 4. Limpieza automática de la nube
-    for (const ticket of tickets) {
-        try { await fileManager.deleteFile(ticket.googleName); } 
-        catch (e) { console.error(` - Fallo al borrar:`, e.message); }
-    }
+  // 4. Limpieza automática de la nube
+  for (const ticket of tickets) {
+      try { await fileManager.deleteFile(ticket.googleName); } 
+      catch (e) { console.error(` - Fallo al borrar:`, e.message); }
+  }
 
-    return textoCrudo;
+  return textoCrudo;
 }
 
 // =================================================================
@@ -164,45 +170,46 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 // =================================================================
 // RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
 // =================================================================
+// =================================================================
+// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
+// =================================================================
 app.post('/api/inventario', async (req, res) => {
   try {
       const { tickets } = req.body;
       if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
-      // Extraemos los nombres de las partes subidas para obligar a la IA a usarlos
       const nombresArchivos = tickets.map(t => t.nombre).join("', '");
 
       const promptAuditor = `
 Eres un Fiscal Investigador y Auditor Forense Documental experto en delitos de corrupción en Perú.
 
 --- ALERTA DE MULTI-ARCHIVOS (¡IMPORTANTE!) ---
-ATENCIÓN: Se han adjuntado ${tickets.length} archivos PDF que conforman un solo expediente.
-ES OBLIGATORIO que analices LOS ${tickets.length} ARCHIVOS secuencialmente. Extrae los elementos de TODOS los archivos adjuntos, no te detengas al terminar el primero.
+Se han adjuntado ${tickets.length} archivos PDF que conforman un solo expediente.
+ES OBLIGATORIO que analices LOS ${tickets.length} ARCHIVOS secuencialmente. Extrae los elementos de TODOS los archivos adjuntos.
 
---- METODOLOGÍA DE EXTRACCIÓN Y PRIORIDADES ---
-1. PRIORIDAD MÁXIMA (LA CARNE DEL CASO): Debes buscar activamente y asegurar la extracción de toda: Nota Informativa, Memorando, Resolución, Informes y Oficios.
-2. EXCLUSIÓN ESPECÍFICA (FILTRO DE BASURA PROCESAL): Tienes ESTRICTAMENTE PROHIBIDO extraer: DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento.
-   (Nota: Todo el RESTO del expediente, como actas, contratos y providencias relevantes, SÍ debe ser extraído).
-3. REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones del "2do Despacho de la Primera Fiscalía Provincial Corporativa Especializada en Delitos de Corrupción de Funcionarios de Lima".
-4. DESGLOSE OBLIGATORIO DE ANEXOS: Los ANEXOS DEBEN registrarse SIEMPRE como objetos independientes.
+--- METODOLOGÍA DE EXTRACCIÓN ---
+1. PRIORIDAD MÁXIMA: Extrae TODA: Nota Informativa, Memorando, Resolución, Informes y Oficios.
+2. EXCLUSIÓN ESPECÍFICA: PROHIBIDO extraer: DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento. (Todo el resto, como actas o contratos, SÍ debe ser extraído).
+3. REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones del "2do Despacho de la Primera Fiscalía Provincial Corporativa".
 
---- MODO AHORRO DE TOKENS (ESTILO TELEGRAMA) ---
-- 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS. Solo indica de qué trata. Elimina formalismos de relleno.
+--- REGLAS DE SINTAXIS JSON Y CÓDIGO (¡DE VIDA O MUERTE!) ---
+Para evitar que el sistema colapse, DEBES CUMPLIR ESTO ESTRICTAMENTE:
+1. ESTÁ TOTALMENTE PROHIBIDO usar comillas dobles (") dentro de los textos. Si necesitas citar algo, usa comillas simples (').
+2. NO uses saltos de línea (Enters) dentro de las descripciones. Escribe todo de corrido.
+3. 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS.
+4. Para 'tomoOrigen', los ÚNICOS nombres válidos son: ['${nombresArchivos}'].
 
---- REGLA ESTRICTA DE ARCHIVOS ---
-Para 'tomoOrigen', PROHIBIDO inventar nombres. Los ÚNICOS válidos son: ['${nombresArchivos}'].
-
-FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples):
+FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido):
 {
-  "elementosConviccionEncontrados": [
-    {
-      "tipo": "Nombre exacto y corto",
-      "descripcion": "Descripción concisa. Máximo 10 palabras.",
-      "tomoOrigen": "Nombre exacto de la parte del archivo",
-      "paginaInicio": 12,
-      "paginaFin": 14
-    }
-  ]
+"elementosConviccionEncontrados": [
+  {
+    "tipo": "Nombre exacto y corto",
+    "descripcion": "Descripción sin comillas dobles y maximo 10 palabras.",
+    "tomoOrigen": "Nombre exacto de la parte",
+    "paginaInicio": 12,
+    "paginaFin": 14
+  }
+]
 }`;
 
       let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
@@ -211,8 +218,16 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples):
       let datosParsed;
       try {
           datosParsed = JSON.parse(textoCrudo);
+          console.log("[Ruta 2] ✅ JSON procesado perfectamente sin errores de sintaxis.");
       } catch (errorParse) {
-          console.log("⚠️ JSON truncado. Aplicando protocolo de rescate...");
+          // 🚨 SI SE ROMPE, AHORA VEREMOS EXACTAMENTE QUÉ ESCRIBIÓ LA IA
+          console.log("=================================================");
+          console.log("⚠️ ERROR FATAL DE SINTAXIS JSON DETECTADO.");
+          console.log("El texto crudo que envió la IA fue:");
+          console.log(textoCrudo); 
+          console.log("=================================================");
+          
+          console.log("Aplicando protocolo de rescate...");
           let rescatado = false;
           let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
           while (jsonTemp.length > 50 && !rescatado) {
