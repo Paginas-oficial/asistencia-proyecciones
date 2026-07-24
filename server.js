@@ -173,39 +173,51 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 // =================================================================
 // RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
 // =================================================================
+// =================================================================
+// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO) - VERSIÓN ALIAS
+// =================================================================
 app.post('/api/inventario', async (req, res) => {
   try {
       const { tickets } = req.body;
       if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
-      const nombresArchivos = tickets.map(t => t.nombre).join("', '");
+      // 🌟 EL TRUCO MAESTRO: Crear un "Diccionario de Alias"
+      // En lugar de hacer que la IA escriba nombres gigantes, le damos alias cortos.
+      const diccionarioAlias = {};
+      const nombresAlias = [];
+      
+      tickets.forEach((t, index) => {
+          const alias = `Tomo_${index + 1}`;
+          diccionarioAlias[alias] = t.nombre; // Guardamos en secreto: { 'Tomo_1': 'C.F 623-2024...' }
+          nombresAlias.push(alias);
+      });
 
       const promptAuditor = `
-Eres un Fiscal Investigador y Auditor Forense Documental experto en delitos de corrupción en Perú.
-
---- ALERTA DE MULTI-ARCHIVOS (¡IMPORTANTE!) ---
-Se han adjuntado ${tickets.length} archivos PDF que conforman un solo expediente.
-ES OBLIGATORIO que analices LOS ${tickets.length} ARCHIVOS secuencialmente. Extrae los elementos de TODOS los archivos adjuntos.
+Eres un Fiscal Investigador y Auditor Forense Documental.
+Analiza LOS ${tickets.length} ARCHIVOS secuencialmente de inicio a fin. Extrae absolutamente todos los elementos relevantes.
 
 --- METODOLOGÍA DE EXTRACCIÓN ---
-1. PRIORIDAD MÁXIMA: Extrae TODA: Nota Informativa, Memorando, Resolución, Informes y Oficios.
-2. EXCLUSIÓN ESPECÍFICA: PROHIBIDO extraer: DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento. (Todo el resto, como actas o contratos, SÍ debe ser extraído).
-3. REGLA QUIRÚRGICA: Ignora TODAS las Providencias y Disposiciones del "2do Despacho de la Primera Fiscalía Provincial Corporativa".
+1. EXTRAER SÍ O SÍ: Notas Informativas, Memorandos, Resoluciones, Informes, Oficios, Actas y Contratos.
+2. IGNORAR (BASURA PROCESAL): DNIs, Correos, Cargos, Carátulas y Escritos de apersonamiento.
+3. IGNORAR: Providencias del "2do Despacho de la Primera Fiscalía Provincial Corporativa".
 
---- REGLAS DE SINTAXIS JSON Y CÓDIGO (¡DE VIDA O MUERTE!) ---
-Para evitar que el sistema colapse, DEBES CUMPLIR ESTO ESTRICTAMENTE:
-1. ESTÁ TOTALMENTE PROHIBIDO usar comillas dobles (") dentro de los textos. Si necesitas citar algo, usa comillas simples (').
-2. NO uses saltos de línea (Enters) dentro de las descripciones. Escribe todo de corrido.
-3. 'descripcion': EXTREMA BREVEDAD. MÁXIMO 10 PALABRAS.
-4. Para 'tomoOrigen', los ÚNICOS nombres válidos son: ['${nombresArchivos}'].
+--- REGLAS DE SINTAXIS JSON (¡CRÍTICO!) ---
+1. PROHIBIDO usar comillas dobles (") dentro de los textos. Usa simples (').
+2. NO uses saltos de línea (Enters) dentro de las descripciones.
+3. 'descripcion': MÁXIMO 10 PALABRAS.
+4. OBLIGATORIO: Genera el JSON completo hasta cerrar la última llave '}'. No te detengas a medias.
 
-FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido):
+--- REGLA ESTRICTA DE ARCHIVOS (USO DE ALIAS) ---
+Para 'tomoOrigen', TIENES PROHIBIDO usar los nombres reales. 
+Usa ÚNICAMENTE estos alias cortos exactos: ['${nombresAlias.join("', '")}'].
+
+FORMATO EXIGIDO (JSON VÁLIDO):
 {
 "elementosConviccionEncontrados": [
   {
-    "tipo": "Nombre exacto y corto",
-    "descripcion": "Descripción sin comillas dobles y maximo 10 palabras.",
-    "tomoOrigen": "Nombre exacto de la parte",
+    "tipo": "Nombre corto (Ej. Informe N 070-2023)",
+    "descripcion": "Texto breve",
+    "tomoOrigen": "Tomo_1",
     "paginaInicio": 12,
     "paginaFin": 14
   }
@@ -218,19 +230,12 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido):
       let datosParsed;
       try {
           datosParsed = JSON.parse(textoCrudo);
-          console.log("[Ruta 2] ✅ JSON procesado perfectamente sin errores de sintaxis.");
+          console.log("[Ruta 2] ✅ JSON procesado perfectamente y sin cortes.");
       } catch (errorParse) {
-          // 🚨 SI SE ROMPE, AHORA VEREMOS EXACTAMENTE QUÉ ESCRIBIÓ LA IA
-          console.log("=================================================");
-          console.log("⚠️ ERROR FATAL DE SINTAXIS JSON DETECTADO.");
-          console.log("El texto crudo que envió la IA fue:");
-          console.log(textoCrudo); 
-          console.log("=================================================");
-          
-          console.log("Aplicando protocolo de rescate...");
+          console.log("⚠️ ERROR DE SINTAXIS JSON. Aplicando rescate...");
           let rescatado = false;
           let jsonTemp = textoCrudo.substring(0, textoCrudo.lastIndexOf('}') + 1);
-          while (jsonTemp.length > 50 && !rescatado) {
+          while (jsonTemp.length > 20 && !rescatado) {
               try {
                   datosParsed = JSON.parse(jsonTemp + '] }');
                   rescatado = true;
@@ -240,6 +245,16 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido):
           }
           if (!rescatado) datosParsed = { elementosConviccionEncontrados: [] };
       }
+
+      // 🌟 TRADUCCIÓN INVERSA: Le devolvemos el nombre real para el botón azul
+      if (datosParsed.elementosConviccionEncontrados && datosParsed.elementosConviccionEncontrados.length > 0) {
+          datosParsed.elementosConviccionEncontrados = datosParsed.elementosConviccionEncontrados.map(item => ({
+              ...item,
+              // Cambiamos mágicamente 'Tomo_1' de vuelta a su nombre larguísimo original
+              tomoOrigen: diccionarioAlias[item.tomoOrigen] || item.tomoOrigen 
+          }));
+      }
+
       res.json(datosParsed);
 
   } catch (error) {
