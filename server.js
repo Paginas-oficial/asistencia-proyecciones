@@ -70,37 +70,29 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
 // =================================================================
 // MOTOR CENTRAL DE PROCESAMIENTO MULTI-PARTES
 // =================================================================
+// =================================================================
+// MOTOR CENTRAL DE GEMINI (VERSIÓN MÁXIMA CAPACIDAD - MAX_TOKENS 8192)
+// =================================================================
 async function analizarTicketsConGemini(tickets, systemPrompt) {
-    console.log(`\n[Motor] Verificando ${tickets.length} partes en la nube de Google...`);
-    
-    // 1. Esperar a que TODAS las partes estén procesadas
-    for (const ticket of tickets) {
-        if (!ticket.googleName) throw new Error("Falta el ID del archivo.");
-        let archivoListo = false;
-        let intentos = 0;
-        while (!archivoListo && intentos < 20) { 
-            const fileInfo = await fileManager.getFile(ticket.googleName);
-            if (fileInfo.state === "ACTIVE") {
-                console.log(` - ✅ ${ticket.nombre} listo.`);
-                archivoListo = true;
-            } else if (fileInfo.state === "FAILED") {
-                throw new Error(`Google falló al leer el PDF: ${ticket.nombre}`);
-            } else {
-                await new Promise(r => setTimeout(r, 5000));
-                intentos++;
-            }
-        }
-    }
+  // 1. Validar que los archivos estén listos en la nube
+  for (const ticket of tickets) {
+      let file = await fileManager.getFile(ticket.googleName);
+      while (file.state === "PROCESSING") {
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          file = await fileManager.getFile(ticket.googleName);
+      }
+      if (file.state === "FAILED") throw new Error(`El archivo ${ticket.nombre} falló en la nube.`);
+      console.log(` - ✅ ${ticket.nombre} listo.`);
+  }
 
-    // 2. Configurar el "Cerebro" (Modelo y Prompt)
-    // 2. Configurar el "Cerebro" (Modelo, Prompt y Apagar Filtros)
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.5-flash", 
+  // 2. Configurar el "Cerebro" (¡AQUÍ ESTÁ LA MAGIA PARA EVITAR MAX_TOKENS!)
+  const model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash", 
       systemInstruction: systemPrompt,
       generationConfig: {
           responseMimeType: "application/json",
-          maxOutputTokens: 8192, 
-          temperature: 0.2, 
+          maxOutputTokens: 8192, // <--- EL TANQUE DE GASOLINA AL MÁXIMO ABSOLUTO
+          temperature: 0.1,      // <--- 0.1 LO HACE ESTRICTO, SIN RODEOS NI ALUCINACIONES
       },
       safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -110,16 +102,15 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
       ]
   });
 
-    // 3. Armar la lista de archivos para inyectarlos en orden
-    // 3. Armar la lista de archivos para inyectarlos en orden
-    const fileParts = tickets.map(t => ({
+  // 3. Armar la lista de archivos para inyectarlos
+  const fileParts = tickets.map(t => ({
       fileData: { fileUri: t.fileUri, mimeType: "application/pdf" }
   }));
 
   console.log("[Motor] Iniciando lectura cruzada de las partes...");
   const result = await model.generateContent(fileParts);
   
-  // 🚨 NUEVO DIAGNÓSTICO: Saber por qué se detuvo la IA
+  // 🚨 DIAGNÓSTICO DE TOKENS
   const razon = result.response.candidates[0]?.finishReason;
   console.log(`[Motor] La IA terminó de escribir por: ${razon}`);
   
@@ -133,7 +124,6 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
 
   return textoCrudo;
 }
-
 // =================================================================
 // RUTA 1: CEREBRO DE RESUMEN
 // =================================================================
@@ -212,16 +202,18 @@ Para 'tomoOrigen', TIENES PROHIBIDO usar los nombres reales.
 Usa ÚNICAMENTE estos alias cortos exactos: ['${nombresAlias.join("', '")}'].
 
 FORMATO EXIGIDO (JSON VÁLIDO):
+ESTÁ ESTRICTAMENTE PROHIBIDO decir "Aquí tienes el JSON" o cualquier otra palabra. 
+TU RESPUESTA DEBE EMPEZAR CON '{' Y TERMINAR CON '}'. NO GASTES TOKENS EN NADA MÁS.
 {
-"elementosConviccionEncontrados": [
-  {
-    "tipo": "Nombre corto (Ej. Informe N 070-2023)",
-    "descripcion": "Texto breve",
-    "tomoOrigen": "Tomo_1",
-    "paginaInicio": 12,
-    "paginaFin": 14
-  }
-]
+  "elementosConviccionEncontrados": [
+    {
+      "tipo": "Nombre corto (Ej. Informe N 070-2023)",
+      "descripcion": "Texto breve",
+      "tomoOrigen": "Tomo_1",
+      "paginaInicio": 12,
+      "paginaFin": 14
+    }
+  ]
 }`;
 
       let textoCrudo = await analizarTicketsConGemini(tickets, promptAuditor);
