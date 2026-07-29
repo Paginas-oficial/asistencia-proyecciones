@@ -244,6 +244,20 @@ export default function FiscalDashboard() {
       
       <style>
         {`
+          /* NUEVO: Quitar bordes blancos del navegador y forzar fondo oscuro */
+          html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #0a0d14; /* Fondo oscuro base */
+            min-height: 100vh;
+            width: 100%;
+          }
+          
+          /* Evita que los padding sumen tamaño extra a los elementos */
+          * {
+            box-sizing: border-box;
+          }
+
           .tarjeta-animada { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
           .tarjeta-azul:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.4), inset 0 0 20px rgba(59, 130, 246, 0.1) !important; }
           .tarjeta-verde:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(16, 185, 129, 0.4), inset 0 0 20px rgba(16, 185, 129, 0.1) !important; }
@@ -256,6 +270,7 @@ export default function FiscalDashboard() {
           }
           .btn-cargando { animation: pulse-anim 1.5s infinite ease-in-out; cursor: wait !important; pointer-events: none; }
 
+          /* CAJA PUNTEADA ARREGLADA */
           .file-input-wrapper {
             position: relative; overflow: hidden; display: block; width: 100%;
             border: 2px dashed #64748b; padding: 30px; border-radius: 16px; text-align: center;
