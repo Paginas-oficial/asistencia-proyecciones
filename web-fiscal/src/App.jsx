@@ -122,8 +122,17 @@ export default function FiscalDashboard() {
     try {
       const tickets = await obtenerTicketsGlobales();
       const res = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      setResultadoResumen(await res.json()); setVistaActual('resumen');
-    } catch (e) { alert("Error en el proceso"); } finally { setLoadingResumen(false); }
+      
+      // NUEVO: Verificamos si Google/Servidor falló antes de continuar
+      if (!res.ok) throw new Error("Error por alta demanda en el servidor"); 
+      
+      setResultadoResumen(await res.json()); 
+      setVistaActual('resumen');
+    } catch (e) { 
+      alert("⚠️ El servidor de inteligencia artificial está saturado (Error 503). Por favor, intenta de nuevo en unos minutos."); 
+    } finally { 
+      setLoadingResumen(false); 
+    }
   };
 
   const procesarInventario = async () => {
@@ -132,8 +141,17 @@ export default function FiscalDashboard() {
     try {
       const tickets = await obtenerTicketsGlobales();
       const res = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      setResultadoInventario(await res.json()); setVistaActual('inventario');
-    } catch (e) { alert("Error en el proceso"); } finally { setLoadingInventario(false); }
+      
+      // NUEVO: Verificamos si Google/Servidor falló antes de continuar
+      if (!res.ok) throw new Error("Error por alta demanda en el servidor"); 
+
+      setResultadoInventario(await res.json()); 
+      setVistaActual('inventario');
+    } catch (e) { 
+      alert("⚠️ El servidor de inteligencia artificial está saturado (Error 503). Por favor, intenta de nuevo en unos minutos."); 
+    } finally { 
+      setLoadingInventario(false); 
+    }
   };
 
   const procesarDiligencias = async () => {
@@ -142,8 +160,17 @@ export default function FiscalDashboard() {
     try {
       const tickets = await obtenerTicketsGlobales();
       const res = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      setResultadoDiligencias(await res.json()); setVistaActual('diligencias');
-    } catch (e) { alert("Error en el proceso"); } finally { setLoadingDiligencias(false); }
+      
+      // NUEVO: Verificamos si Google/Servidor falló antes de continuar
+      if (!res.ok) throw new Error("Error por alta demanda en el servidor"); 
+
+      setResultadoDiligencias(await res.json()); 
+      setVistaActual('diligencias');
+    } catch (e) { 
+      alert("⚠️ El servidor de inteligencia artificial está saturado (Error 503). Por favor, intenta de nuevo en unos minutos."); 
+    } finally { 
+      setLoadingDiligencias(false); 
+    }
   };
 
   // =====================================================================
