@@ -9,7 +9,7 @@ export default function FiscalDashboard() {
   const [archivosGlobales, setArchivosGlobales] = useState([]);
   const [ticketsGlobales, setTicketsGlobales] = useState(null); // Guarda los tickets para no re-subir
 
-  // 🧠 ESTADOS DE LAS TARJETAS (Solo manejan carga y resultados)
+  // 🧠 ESTADOS DE LAS TARJETAS (Manejan carga y resultados)
   const [loadingResumen, setLoadingResumen] = useState(false);
   const [resultadoResumen, setResultadoResumen] = useState(null);
 
@@ -19,7 +19,15 @@ export default function FiscalDashboard() {
   const [loadingDiligencias, setLoadingDiligencias] = useState(false);
   const [resultadoDiligencias, setResultadoDiligencias] = useState(null);
 
+  // NUEVOS ESTADOS PARA LOS MENSAJES DINÁMICOS DE LOS BOTONES
+  const [mensajeResumen, setMensajeResumen] = useState("⏳ Analizando...");
+  const [mensajeInventario, setMensajeInventario] = useState("⏳ Extrayendo...");
+  const [mensajeDiligencias, setMensajeDiligencias] = useState("⏳ Evaluando...");
+
   const API_BASE_URL = "https://api-fiscal-backend.onrender.com/api";
+
+  // Función auxiliar para pausar la ejecución (cuenta regresiva)
+  const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
   // =====================================================================
   // MANEJO DE ARCHIVOS GLOBAL
@@ -28,7 +36,7 @@ export default function FiscalDashboard() {
     setArchivosGlobales(Array.from(e.target.files));
     setTicketsGlobales(null); // Si cambia el archivo, borramos los tickets viejos
     
-    // Opcional: Limpiar resultados anteriores porque es un expediente nuevo
+    // Limpiar resultados anteriores porque es un expediente nuevo
     setResultadoResumen(null);
     setResultadoInventario(null);
     setResultadoDiligencias(null);
@@ -116,60 +124,100 @@ export default function FiscalDashboard() {
     return tickets;
   };
 
+  // =====================================================================
+  // 4. FUNCIONES DE PROCESAMIENTO (CON AUTO-REINTENTO)
+  // =====================================================================
   const procesarResumen = async () => {
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     setLoadingResumen(true); setResultadoResumen(null);
-    try {
-      const tickets = await obtenerTicketsGlobales();
-      const res = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      
-      // NUEVO: Verificamos si Google/Servidor falló antes de continuar
-      if (!res.ok) throw new Error("Error por alta demanda en el servidor"); 
-      
-      setResultadoResumen(await res.json()); 
-      setVistaActual('resumen');
-    } catch (e) { 
-      alert("⚠️ El servidor de inteligencia artificial está saturado (Error 503). Por favor, intenta de nuevo en unos minutos."); 
-    } finally { 
-      setLoadingResumen(false); 
+    const maxIntentos = 3;
+
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+      try {
+        setMensajeResumen("⏳ Analizando...");
+        const tickets = await obtenerTicketsGlobales();
+        const res = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
+        
+        if (!res.ok) throw new Error("Error 503"); 
+        
+        setResultadoResumen(await res.json()); 
+        setVistaActual('resumen');
+        setLoadingResumen(false);
+        return; // Éxito: Salimos del bucle
+      } catch (e) { 
+        if (intento === maxIntentos) {
+          alert("⚠️ Google sigue saturado después de 3 intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          setLoadingResumen(false);
+          return;
+        }
+        // Cuenta regresiva
+        for (let i = 15; i > 0; i--) {
+          setMensajeResumen(`🔄 EN COLA. Reintento en ${i}s...`);
+          await esperar(1000);
+        }
+      } 
     }
   };
 
   const procesarInventario = async () => {
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     setLoadingInventario(true); setResultadoInventario(null);
-    try {
-      const tickets = await obtenerTicketsGlobales();
-      const res = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      
-      // NUEVO: Verificamos si Google/Servidor falló antes de continuar
-      if (!res.ok) throw new Error("Error por alta demanda en el servidor"); 
+    const maxIntentos = 3;
 
-      setResultadoInventario(await res.json()); 
-      setVistaActual('inventario');
-    } catch (e) { 
-      alert("⚠️ El servidor de inteligencia artificial está saturado (Error 503). Por favor, intenta de nuevo en unos minutos."); 
-    } finally { 
-      setLoadingInventario(false); 
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+      try {
+        setMensajeInventario("⏳ Extrayendo...");
+        const tickets = await obtenerTicketsGlobales();
+        const res = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
+        
+        if (!res.ok) throw new Error("Error 503"); 
+
+        setResultadoInventario(await res.json()); 
+        setVistaActual('inventario');
+        setLoadingInventario(false);
+        return; 
+      } catch (e) { 
+        if (intento === maxIntentos) {
+          alert("⚠️ Google sigue saturado después de 3 intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          setLoadingInventario(false);
+          return;
+        }
+        for (let i = 15; i > 0; i--) {
+          setMensajeInventario(`🔄 EN COLA. Reintento en ${i}s...`);
+          await esperar(1000);
+        }
+      } 
     }
   };
 
   const procesarDiligencias = async () => {
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     setLoadingDiligencias(true); setResultadoDiligencias(null);
-    try {
-      const tickets = await obtenerTicketsGlobales();
-      const res = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-      
-      // NUEVO: Verificamos si Google/Servidor falló antes de continuar
-      if (!res.ok) throw new Error("Error por alta demanda en el servidor"); 
+    const maxIntentos = 3;
 
-      setResultadoDiligencias(await res.json()); 
-      setVistaActual('diligencias');
-    } catch (e) { 
-      alert("⚠️ El servidor de inteligencia artificial está saturado (Error 503). Por favor, intenta de nuevo en unos minutos."); 
-    } finally { 
-      setLoadingDiligencias(false); 
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+      try {
+        setMensajeDiligencias("⏳ Evaluando...");
+        const tickets = await obtenerTicketsGlobales();
+        const res = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
+        
+        if (!res.ok) throw new Error("Error 503"); 
+
+        setResultadoDiligencias(await res.json()); 
+        setVistaActual('diligencias');
+        setLoadingDiligencias(false);
+        return;
+      } catch (e) { 
+        if (intento === maxIntentos) {
+          alert("⚠️ Google sigue saturado después de 3 intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          setLoadingDiligencias(false);
+          return;
+        }
+        for (let i = 15; i > 0; i--) {
+          setMensajeDiligencias(`🔄 EN COLA. Reintento en ${i}s...`);
+          await esperar(1000);
+        }
+      } 
     }
   };
 
@@ -185,7 +233,7 @@ export default function FiscalDashboard() {
   };
 
   // =====================================================================
-  // VISTAS DE RESULTADOS (Se mantienen igual)
+  // VISTAS DE RESULTADOS
   // =====================================================================
   if (vistaActual === 'inventario' && resultadoInventario) {
     return (
@@ -338,7 +386,7 @@ export default function FiscalDashboard() {
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarResumen} disabled={loadingResumen || archivosGlobales.length === 0} className={`btn-principal ${loadingResumen ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingResumen ? '#3b82f6' : '#2563eb' }}>
-              {loadingResumen ? "⏳ Analizando..." : "Generar Análisis"}
+              {loadingResumen ? mensajeResumen : "Generar Análisis"}
             </button>
             {resultadoResumen && <button onClick={() => setVistaActual('resumen')} className="btn-principal" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}>👁️ Ver Resultado</button>}
           </div>
@@ -354,7 +402,7 @@ export default function FiscalDashboard() {
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarInventario} disabled={loadingInventario || archivosGlobales.length === 0} className={`btn-principal ${loadingInventario ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingInventario ? '#10b981' : '#059669' }}>
-              {loadingInventario ? "⏳ Extrayendo..." : "Generar Inventario"}
+              {loadingInventario ? mensajeInventario : "Generar Inventario"}
             </button>
             {resultadoInventario && <button onClick={() => setVistaActual('inventario')} className="btn-principal" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}>👁️ Ver Resultado</button>}
           </div>
@@ -370,7 +418,7 @@ export default function FiscalDashboard() {
           
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarDiligencias} disabled={loadingDiligencias || archivosGlobales.length === 0} className={`btn-principal ${loadingDiligencias ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingDiligencias ? '#ef4444' : '#dc2626' }}>
-              {loadingDiligencias ? "⏳ Evaluando..." : "Analizar Estrategia"}
+              {loadingDiligencias ? mensajeDiligencias : "Analizar Estrategia"}
             </button>
             {resultadoDiligencias && <button onClick={() => setVistaActual('diligencias')} className="btn-principal" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}>👁️ Ver Resultado</button>}
           </div>
