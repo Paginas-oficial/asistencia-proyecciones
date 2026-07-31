@@ -162,7 +162,7 @@ export default function FiscalDashboard() {
   const procesarInventario = async () => {
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     setLoadingInventario(true); setResultadoInventario(null);
-    const maxIntentos = 3;
+    const maxIntentos = 5;
 
     for (let intento = 1; intento <= maxIntentos; intento++) {
       try {
@@ -182,7 +182,7 @@ export default function FiscalDashboard() {
           setLoadingInventario(false);
           return;
         }
-        for (let i = 15; i > 0; i--) {
+        for (let i = 60; i > 0; i--) {
           setMensajeInventario(`🔄 EN COLA. Reintento en ${i}s...`);
           await esperar(1000);
         }
