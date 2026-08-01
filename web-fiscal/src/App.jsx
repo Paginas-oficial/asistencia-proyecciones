@@ -130,7 +130,7 @@ export default function FiscalDashboard() {
   const procesarResumen = async () => {
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     setLoadingResumen(true); setResultadoResumen(null);
-    const maxIntentos = 3;
+    const maxIntentos = 5;
 
     for (let intento = 1; intento <= maxIntentos; intento++) {
       try {
@@ -151,7 +151,7 @@ export default function FiscalDashboard() {
           return;
         }
         // Cuenta regresiva
-        for (let i = 15; i > 0; i--) {
+        for (let i = 60; i > 0; i--) {
           setMensajeResumen(`🔄 EN COLA. Reintento en ${i}s...`);
           await esperar(1000);
         }
@@ -193,7 +193,7 @@ export default function FiscalDashboard() {
   const procesarDiligencias = async () => {
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     setLoadingDiligencias(true); setResultadoDiligencias(null);
-    const maxIntentos = 3;
+    const maxIntentos = 5;
 
     for (let intento = 1; intento <= maxIntentos; intento++) {
       try {
@@ -213,7 +213,7 @@ export default function FiscalDashboard() {
           setLoadingDiligencias(false);
           return;
         }
-        for (let i = 15; i > 0; i--) {
+        for (let i = 60; i > 0; i--) {
           setMensajeDiligencias(`🔄 EN COLA. Reintento en ${i}s...`);
           await esperar(1000);
         }

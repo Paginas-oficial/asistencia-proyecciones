@@ -3,7 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const fs = require('fs');
 const { GoogleGenerativeAI } = require('@google/generative-ai'); 
-const { HarmCategory, HarmBlockThreshold } = require('@google/generative-ai'); // <-- AGREGAR ESTA LÍNEA
+const { HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
 
 require('dotenv').config();
@@ -70,9 +70,6 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
 // =================================================================
 // MOTOR CENTRAL DE PROCESAMIENTO MULTI-PARTES
 // =================================================================
-// =================================================================
-// MOTOR CENTRAL DE GEMINI (VERSIÓN MÁXIMA CAPACIDAD - MAX_TOKENS 8192)
-// =================================================================
 async function analizarTicketsConGemini(tickets, systemPrompt) {
   // 1. Validar que los archivos estén listos en la nube
   for (const ticket of tickets) {
@@ -85,14 +82,14 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
       console.log(` - ✅ ${ticket.nombre} listo.`);
   }
 
-  // 2. Configurar el "Cerebro" (¡AQUÍ ESTÁ LA MAGIA PARA EVITAR MAX_TOKENS!)
+  // 2. Configurar el "Cerebro"
   const model = genAI.getGenerativeModel({
       model: "gemini-3.6-flash", 
       systemInstruction: systemPrompt,
       generationConfig: {
           responseMimeType: "application/json",
-          maxOutputTokens: 8192, // <--- EL TANQUE DE GASOLINA AL MÁXIMO ABSOLUTO
-          temperature: 0.1,      // <--- 0.1 LO HACE ESTRICTO, SIN RODEOS NI ALUCINACIONES
+          maxOutputTokens: 8192, 
+          temperature: 0.1,      
       },
       safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -116,14 +113,17 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
   
   const textoCrudo = result.response.text();
 
-  // 4. Limpieza automática de la nube
+  // 4. Limpieza automática de la nube (DESACTIVADA PARA EVITAR ERROR 403)
+  /*
   for (const ticket of tickets) {
       try { await fileManager.deleteFile(ticket.googleName); } 
       catch (e) { console.error(` - Fallo al borrar:`, e.message); }
   }
+  */
 
   return textoCrudo;
 }
+
 // =================================================================
 // RUTA 1: CEREBRO DE RESUMEN
 // =================================================================
@@ -155,18 +155,6 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
 });
 
 // =================================================================
-// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
-// =================================================================
-// =================================================================
-// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
-// =================================================================
-// =================================================================
-// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO)
-// =================================================================
-// =================================================================
-// RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO) - VERSIÓN ALIAS
-// =================================================================
-// =================================================================
 // RUTA 2: CEREBRO AUDITOR (INVENTARIO PROBATORIO - MODO ITERATIVO)
 // =================================================================
 app.post('/api/inventario', async (req, res) => {
@@ -174,12 +162,10 @@ app.post('/api/inventario', async (req, res) => {
       const { tickets } = req.body;
       if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
 
-      // Esta es la caja fuerte donde guardaremos los elementos de todos los tomos
       let inventarioGlobal = [];
 
       console.log(`[Ruta 2] Iniciando análisis ITERATIVO de ${tickets.length} partes...`);
 
-      // 🌟 EL TRUCO MAESTRO: Un Bucle que analiza archivo por archivo
       for (let i = 0; i < tickets.length; i++) {
           const ticket = tickets[i];
           console.log(`[Ruta 2] Analizando Tomo ${i + 1} de ${tickets.length}: ${ticket.nombre}`);
@@ -214,14 +200,12 @@ NO digas "Aquí tienes el JSON". Empieza directo con la llave '{'.
 ]
 }`;
 
-          // Le enviamos SOLO UN TICKET al motor, es imposible que se quede sin tokens
           let textoCrudo = await analizarTicketsConGemini([ticket], promptAuditor);
           textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
           
           try {
               const datosParsed = JSON.parse(textoCrudo);
               if (datosParsed.elementosConviccionEncontrados) {
-                  // Si el JSON es perfecto, sumamos estas pruebas a la caja fuerte
                   inventarioGlobal = inventarioGlobal.concat(datosParsed.elementosConviccionEncontrados);
                   console.log(`  -> ✅ ${datosParsed.elementosConviccionEncontrados.length} elementos extraídos del Tomo ${i+1}.`);
               }
@@ -246,8 +230,6 @@ NO digas "Aquí tienes el JSON". Empieza directo con la llave '{'.
       }
 
       console.log(`[Ruta 2] 🎉 Análisis finalizado. Total extraído en el expediente: ${inventarioGlobal.length} elementos.`);
-      
-      // Enviamos la caja fuerte completa a tu pantalla
       res.json({ elementosConviccionEncontrados: inventarioGlobal });
 
   } catch (error) {
@@ -311,6 +293,7 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: promptOCR });
       const result = await model.generateContent([{ fileData: { fileUri: uploadResult.file.uri, mimeType: "application/pdf" } }]);
       
+      // Aquí SÍ se borra el archivo porque es de un solo uso para esta ruta en particular
       try { await fileManager.deleteFile(uploadResult.file.name); } catch(e){}
       res.json({ texto: result.response.text() });
 
