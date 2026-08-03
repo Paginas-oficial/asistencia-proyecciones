@@ -5,6 +5,7 @@ const fs = require('fs');
 const { GoogleGenerativeAI } = require('@google/generative-ai'); 
 const { HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
+const { Document, Packer, Paragraph, TextRun, AlignmentType } = require('docx'); // <-- NUEVA LIBRERÍA PARA WORD
 
 require('dotenv').config();
 
@@ -70,7 +71,8 @@ app.post('/api/subir-tomo', upload.single('documentoPdf'), async (req, res) => {
 // =================================================================
 // MOTOR CENTRAL DE PROCESAMIENTO MULTI-PARTES
 // =================================================================
-async function analizarTicketsConGemini(tickets, systemPrompt) {
+// NOTA: Se agregó "requiereJson" para que el motor sirva tanto para la UI como para Word.
+async function analizarTicketsConGemini(tickets, systemPrompt, requiereJson = true) {
   // 1. Validar que los archivos estén listos en la nube
   for (const ticket of tickets) {
       let file = await fileManager.getFile(ticket.googleName);
@@ -82,15 +84,20 @@ async function analizarTicketsConGemini(tickets, systemPrompt) {
       console.log(` - ✅ ${ticket.nombre} listo.`);
   }
 
+  // Configuración dinámica según lo que pida la ruta
+  const configGeneracion = {
+      maxOutputTokens: 8192, 
+      temperature: 0.1,      
+  };
+  if (requiereJson) {
+      configGeneracion.responseMimeType = "application/json";
+  }
+
   // 2. Configurar el "Cerebro"
   const model = genAI.getGenerativeModel({
-      model: "gemini-3.6-flash", 
+      model: "gemini-1.5-flash", // Corregido: "3.6" no existe y te daría Error 404. Usamos la versión estable más potente.
       systemInstruction: systemPrompt,
-      generationConfig: {
-          responseMimeType: "application/json",
-          maxOutputTokens: 8192, 
-          temperature: 0.1,      
-      },
+      generationConfig: configGeneracion,
       safetySettings: [
           { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.BLOCK_NONE },
           { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.BLOCK_NONE },
@@ -144,7 +151,7 @@ FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido, usa comillas simples para t
   "probabilidadExito": "Alta, Media o Baja"
 }`;
 
-        let textoCrudo = await analizarTicketsConGemini(tickets, promptResumen);
+        let textoCrudo = await analizarTicketsConGemini(tickets, promptResumen); // Usa requiereJson = true por defecto
         textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
         res.json(JSON.parse(textoCrudo));
 
@@ -293,7 +300,6 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
       const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: promptOCR });
       const result = await model.generateContent([{ fileData: { fileUri: uploadResult.file.uri, mimeType: "application/pdf" } }]);
       
-      // Aquí SÍ se borra el archivo porque es de un solo uso para esta ruta en particular
       try { await fileManager.deleteFile(uploadResult.file.name); } catch(e){}
       res.json({ texto: result.response.text() });
 
@@ -301,6 +307,74 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
       console.error("Error OCR:", error);
       res.status(500).json({ error: "Fallo en OCR." });
   }
+});
+
+// =================================================================
+// RUTA 5: REDACTOR JURÍDICO - GENERADOR DE WORD (.DOCX)
+// =================================================================
+app.post('/api/generar-documento', async (req, res) => {
+    try {
+        const { instruccion, tickets } = req.body;
+        
+        if (!instruccion) return res.status(400).json({ error: "Falta la instrucción." });
+
+        console.log(`[Ruta 5] Iniciando redacción jurídica Word: "${instruccion}"`);
+
+        const promptRedaccion = `
+Eres un Fiscal Provincial Especializado en Delitos de Corrupción de Funcionarios. 
+Tu tarea es redactar un documento legal completo, profesional y extenso, siguiendo ESTRICTAMENTE la instrucción del usuario: "${instruccion}".
+
+REGLAS DE FORMATO Y ESTRUCTURA OBLIGATORIAS:
+Debes imitar el estilo, tono y estructura de este modelo base:
+1. Iniciar con el encabezado institucional: "MINISTERIO PÚBLICO PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS -SEGUNDO DESPACHO-".
+2. Incluir los datos de identificación: Carpeta Fiscal, Investigados, Agraviado, Delito, Fiscal a Cargo y Asistente.
+3. Estructurar el cuerpo obligatoriamente con estos subtítulos (en mayúsculas):
+   - DADO CUENTA
+   - DEL MINISTERIO PÚBLICO
+   - HECHOS DENUNCIADOS E INVESTIGADOS
+   - CALIFICACIÓN JURÍDICO-PENAL DE LOS HECHOS DENUNCIADOS
+   - ELEMENTOS DE CONVICCIÓN
+   - PRONUNCIAMIENTO FINAL DE ESTE DESPACHO PROVINCIAL
+   - DISPOSICIÓN
+4. Utilizar lenguaje técnico-jurídico riguroso, citando principios penales y procesales correspondientes (ej. Principio de Lesividad, Mínima Intervención).
+5. Extrae los nombres, montos, delitos y datos exactos de los documentos PDF adjuntos para nutrir los "Elementos de Convicción" y los "Hechos Denunciados". Si falta algún dato menor, infiérelo lógicamente, pero mantén la precisión de la prueba.
+
+NO incluyas introducciones como "Aquí tienes el documento". Inicia directamente con el encabezado del Ministerio Público.
+`;
+
+        // Llamamos al motor con el parámetro requiereJson en 'false' para obtener texto plano puro
+        let textoGenerado = await analizarTicketsConGemini(tickets || [], promptRedaccion, false);
+        
+        // Convertimos el texto generado por la IA en un formato que Word entienda (Párrafos)
+        const parrafosTexto = textoGenerado.split('\n').filter(p => p.trim() !== '');
+        
+        const parrafosWord = parrafosTexto.map(texto => {
+            return new Paragraph({
+                children: [new TextRun(texto)],
+                spacing: { after: 200 },
+                alignment: AlignmentType.JUSTIFIED,
+            });
+        });
+
+        const doc = new Document({
+            sections: [{
+                properties: {},
+                children: parrafosWord,
+            }],
+        });
+
+        // Empaquetamos el archivo y lo enviamos al navegador para su descarga
+        const buffer = await Packer.toBuffer(doc);
+        
+        res.setHeader('Content-Disposition', 'attachment; filename=Disposicion_Fiscal.docx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.send(buffer);
+        console.log(`[Ruta 5] ✅ Documento Word generado y enviado exitosamente.`);
+
+    } catch (error) {
+        console.error("Error al generar el documento Word:", error);
+        res.status(500).json({ error: "Fallo al generar el archivo Word." });
+    }
 });
 
 const servidorConfigurado = app.listen(puerto, () => {

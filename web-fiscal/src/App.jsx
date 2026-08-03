@@ -19,10 +19,15 @@ export default function FiscalDashboard() {
   const [loadingDiligencias, setLoadingDiligencias] = useState(false);
   const [resultadoDiligencias, setResultadoDiligencias] = useState(null);
 
+  // NUEVOS ESTADOS PARA EL REDACTOR
+  const [instruccionRedactor, setInstruccionRedactor] = useState('');
+  const [loadingRedactor, setLoadingRedactor] = useState(false);
+
   // NUEVOS ESTADOS PARA LOS MENSAJES DINÁMICOS DE LOS BOTONES
   const [mensajeResumen, setMensajeResumen] = useState("⏳ Analizando...");
   const [mensajeInventario, setMensajeInventario] = useState("⏳ Extrayendo...");
   const [mensajeDiligencias, setMensajeDiligencias] = useState("⏳ Evaluando...");
+  const [mensajeRedactor, setMensajeRedactor] = useState("⏳ Redactando...");
 
   const API_BASE_URL = "https://api-fiscal-backend.onrender.com/api";
 
@@ -48,6 +53,7 @@ export default function FiscalDashboard() {
     setResultadoResumen(null);
     setResultadoInventario(null);
     setResultadoDiligencias(null);
+    setInstruccionRedactor('');
     const input = document.getElementById('input-global');
     if (input) input.value = '';
   };
@@ -146,7 +152,7 @@ export default function FiscalDashboard() {
         return; // Éxito: Salimos del bucle
       } catch (e) { 
         if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de 3 intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
           setLoadingResumen(false);
           return;
         }
@@ -178,7 +184,7 @@ export default function FiscalDashboard() {
         return; 
       } catch (e) { 
         if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de 3 intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
           setLoadingInventario(false);
           return;
         }
@@ -209,12 +215,59 @@ export default function FiscalDashboard() {
         return;
       } catch (e) { 
         if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de 3 intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
           setLoadingDiligencias(false);
           return;
         }
         for (let i = 60; i > 0; i--) {
           setMensajeDiligencias(`🔄 EN COLA. Reintento en ${i}s...`);
+          await esperar(1000);
+        }
+      } 
+    }
+  };
+
+  const procesarRedactor = async () => {
+    if (!instruccionRedactor) return alert("Por favor, ingresa una instrucción en el campo de texto.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
+    
+    setLoadingRedactor(true);
+    const maxIntentos = 5;
+
+    for (let intento = 1; intento <= maxIntentos; intento++) {
+      try {
+        setMensajeRedactor("⏳ Redactando...");
+        const tickets = await obtenerTicketsGlobales();
+        
+        // Petición POST esperando un archivo binario (Blob)
+        const res = await fetch(`${API_BASE_URL}/generar-documento`, { 
+            method: "POST", 
+            headers: { "Content-Type": "application/json" }, 
+            body: JSON.stringify({ instruccion: instruccionRedactor, tickets }) 
+        });
+        
+        if (!res.ok) throw new Error("Error 503"); 
+
+        // Lógica para procesar y descargar el Blob (.docx)
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'Disposicion_Generada.docx';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        
+        setLoadingRedactor(false);
+        return; // Éxito
+      } catch (e) { 
+        if (intento === maxIntentos) {
+          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          setLoadingRedactor(false);
+          return;
+        }
+        for (let i = 60; i > 0; i--) {
+          setMensajeRedactor(`🔄 EN COLA. Reintento en ${i}s...`);
           await esperar(1000);
         }
       } 
@@ -285,7 +338,7 @@ export default function FiscalDashboard() {
   }
 
   // =====================================================================
-  // PANTALLA PRINCIPAL: MAESTRA + 3 ESCLAVAS
+  // PANTALLA PRINCIPAL: MAESTRA + 4 ESCLAVAS
   // =====================================================================
   return (
     <div style={styles.container}>
@@ -310,6 +363,7 @@ export default function FiscalDashboard() {
           .tarjeta-azul:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.4), inset 0 0 20px rgba(59, 130, 246, 0.1) !important; }
           .tarjeta-verde:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(16, 185, 129, 0.4), inset 0 0 20px rgba(16, 185, 129, 0.1) !important; }
           .tarjeta-roja:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.1) !important; }
+          .tarjeta-morada:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(139, 92, 246, 0.4), inset 0 0 20px rgba(139, 92, 246, 0.1) !important; }
           
           @keyframes pulse-anim {
             0% { opacity: 1; transform: scale(1); }
@@ -336,6 +390,13 @@ export default function FiscalDashboard() {
           }
           .btn-principal:hover:not(:disabled) { filter: brightness(1.2); }
           .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }
+          
+          /* INPUST DE LA TARJETA REDACTOR */
+          .input-redactor {
+            width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #475569;
+            background: rgba(0,0,0,0.2); color: #fff; font-size: 0.95rem; margin-bottom: 15px; outline: none; transition: 0.3s;
+          }
+          .input-redactor:focus { border-color: #a78bfa; box-shadow: 0 0 10px rgba(139, 92, 246, 0.3); }
         `}
       </style>
 
@@ -372,9 +433,9 @@ export default function FiscalDashboard() {
       </div>
       
       {/* ================================================================= */}
-      {/* TARJETAS HERRAMIENTAS (3 Abajo) */}
+      {/* TARJETAS HERRAMIENTAS (4 Abajo) */}
       {/* ================================================================= */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '2.5rem', maxWidth: '1300px', margin: '0 auto' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2.5rem', maxWidth: '1400px', margin: '0 auto' }}>
         
         {/* TARJETA 1: AZUL (RESUMEN) */}
         <div className="tarjeta-animada tarjeta-azul" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(59, 130, 246, 0.15)', borderTop: '2px solid rgba(59, 130, 246, 0.5)' }}>
@@ -421,6 +482,29 @@ export default function FiscalDashboard() {
               {loadingDiligencias ? mensajeDiligencias : "Analizar Estrategia"}
             </button>
             {resultadoDiligencias && <button onClick={() => setVistaActual('diligencias')} className="btn-principal" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}>👁️ Ver Resultado</button>}
+          </div>
+        </div>
+
+        {/* TARJETA 4: MORADO (REDACTOR JURÍDICO) */}
+        <div className="tarjeta-animada tarjeta-morada" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(139, 92, 246, 0.15)', borderTop: '2px solid rgba(139, 92, 246, 0.5)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+            <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>✍️</div>
+            <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Redactor</h2>
+          </div>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '1rem' }}>Genera disposiciones en Word (.docx) listas para imprimir.</p>
+          
+          <input 
+            type="text" 
+            placeholder='Ej: "Generar disposición..."'
+            value={instruccionRedactor}
+            onChange={(e) => setInstruccionRedactor(e.target.value)}
+            className="input-redactor"
+          />
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1, justifyContent: 'flex-end' }}>
+            <button onClick={procesarRedactor} disabled={loadingRedactor || archivosGlobales.length === 0} className={`btn-principal ${loadingRedactor ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingRedactor ? '#8b5cf6' : '#7c3aed' }}>
+              {loadingRedactor ? mensajeRedactor : "Generar Documento"}
+            </button>
           </div>
         </div>
 
