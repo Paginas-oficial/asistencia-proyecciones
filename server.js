@@ -95,7 +95,7 @@ async function analizarTicketsConGemini(tickets, systemPrompt, requiereJson = tr
 
   // 2. Configurar el "Cerebro"
   const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash", // Corregido: "3.6" no existe y te daría Error 404. Usamos la versión estable más potente.
+      model: "gemini-3.6-flash", // Corregido: "3.6" no existe y te daría Error 404. Usamos la versión estable más potente.
       systemInstruction: systemPrompt,
       generationConfig: configGeneracion,
       safetySettings: [
