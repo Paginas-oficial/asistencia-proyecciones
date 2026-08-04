@@ -2,14 +2,10 @@ import React, { useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 
 export default function FiscalDashboard() {
-  // 🧭 GESTOR DE VISTAS
   const [vistaActual, setVistaActual] = useState('dashboard');
-
-  // 📂 ESTADO CENTRALIZADO DEL EXPEDIENTE (La tarjeta principal)
   const [archivosGlobales, setArchivosGlobales] = useState([]);
-  const [ticketsGlobales, setTicketsGlobales] = useState(null); // Guarda los tickets para no re-subir
+  const [ticketsGlobales, setTicketsGlobales] = useState(null); 
 
-  // 🧠 ESTADOS DE LAS TARJETAS (Manejan carga y resultados)
   const [loadingResumen, setLoadingResumen] = useState(false);
   const [resultadoResumen, setResultadoResumen] = useState(null);
 
@@ -20,10 +16,10 @@ export default function FiscalDashboard() {
   const [resultadoDiligencias, setResultadoDiligencias] = useState(null);
 
   // NUEVOS ESTADOS PARA EL REDACTOR
+  const [tipoDocumento, setTipoDocumento] = useState('Disposición de Archivo (No Ha Lugar)');
   const [instruccionRedactor, setInstruccionRedactor] = useState('');
   const [loadingRedactor, setLoadingRedactor] = useState(false);
 
-  // NUEVOS ESTADOS PARA LOS MENSAJES DINÁMICOS DE LOS BOTONES
   const [mensajeResumen, setMensajeResumen] = useState("⏳ Analizando...");
   const [mensajeInventario, setMensajeInventario] = useState("⏳ Extrayendo...");
   const [mensajeDiligencias, setMensajeDiligencias] = useState("⏳ Evaluando...");
@@ -31,17 +27,11 @@ export default function FiscalDashboard() {
 
   const API_BASE_URL = "https://api-fiscal-backend.onrender.com/api";
 
-  // Función auxiliar para pausar la ejecución (cuenta regresiva)
   const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  // =====================================================================
-  // MANEJO DE ARCHIVOS GLOBAL
-  // =====================================================================
   const manejarSubidaArchivos = (e) => {
     setArchivosGlobales(Array.from(e.target.files));
-    setTicketsGlobales(null); // Si cambia el archivo, borramos los tickets viejos
-    
-    // Limpiar resultados anteriores porque es un expediente nuevo
+    setTicketsGlobales(null); 
     setResultadoResumen(null);
     setResultadoInventario(null);
     setResultadoDiligencias(null);
@@ -58,9 +48,6 @@ export default function FiscalDashboard() {
     if (input) input.value = '';
   };
 
-  // =====================================================================
-  // 1. LÓGICA DE EXTRACCIÓN (Usa los archivos globales)
-  // =====================================================================
   const extraerPaginas = async (item) => {
     try {
       const archivoCorrecto = archivosGlobales.find(f => f.name === item.tomoOrigen);
@@ -85,9 +72,6 @@ export default function FiscalDashboard() {
     } catch (error) { alert("Error al cortar el PDF."); }
   };
 
-  // =====================================================================
-  // 2. LÓGICA DE EXPORTACIÓN
-  // =====================================================================
   const generarPDF = (titulo, contenidoHTML) => {
     const ventana = window.open('', '_blank');
     ventana.document.write(`
@@ -110,14 +94,8 @@ export default function FiscalDashboard() {
   };
   const exportarDiligencias = () => { generarPDF("Estrategia Faltante", resultadoDiligencias.elementosFaltantes.map(item => `<div class="item" style="border-left-color: #ef4444;">${item}</div>`).join('')); };
 
-  // =====================================================================
-  // 3. MOTOR INTELIGENTE DE SUBIDA (Reutiliza Tickets)
-  // =====================================================================
   const obtenerTicketsGlobales = async () => {
-    // Si ya los subimos antes, los reutilizamos instantáneamente
     if (ticketsGlobales) return ticketsGlobales;
-    
-    // Si no, subimos los archivos por primera vez
     const tickets = [];
     for (let i = 0; i < archivosGlobales.length; i++) {
         const formData = new FormData();
@@ -126,109 +104,69 @@ export default function FiscalDashboard() {
         if (!res.ok) throw new Error("Fallo al subir archivo");
         tickets.push((await res.json()).ticket);
     }
-    setTicketsGlobales(tickets); // Guardamos en caché
+    setTicketsGlobales(tickets); 
     return tickets;
   };
 
-  // =====================================================================
-  // 4. FUNCIONES DE PROCESAMIENTO (CON AUTO-REINTENTO)
-  // =====================================================================
   const procesarResumen = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente primero.");
     setLoadingResumen(true); setResultadoResumen(null);
-    const maxIntentos = 5;
-
-    for (let intento = 1; intento <= maxIntentos; intento++) {
+    for (let intento = 1; intento <= 5; intento++) {
       try {
         setMensajeResumen("⏳ Analizando...");
         const tickets = await obtenerTicketsGlobales();
         const res = await fetch(`${API_BASE_URL}/resumen`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-        
-        if (!res.ok) throw new Error("Error 503"); 
-        
+        if (!res.ok) throw new Error("Error"); 
         setResultadoResumen(await res.json()); 
         setVistaActual('resumen');
-        setLoadingResumen(false);
-        return; // Éxito: Salimos del bucle
+        setLoadingResumen(false); return;
       } catch (e) { 
-        if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
-          setLoadingResumen(false);
-          return;
-        }
-        // Cuenta regresiva
-        for (let i = 60; i > 0; i--) {
-          setMensajeResumen(`🔄 EN COLA. Reintento en ${i}s...`);
-          await esperar(1000);
-        }
+        if (intento === 5) { alert("⚠️ Error de conexión."); setLoadingResumen(false); return; }
+        for (let i = 60; i > 0; i--) { setMensajeResumen(`🔄 EN COLA. Reintento en ${i}s...`); await esperar(1000); }
       } 
     }
   };
 
   const procesarInventario = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente primero.");
     setLoadingInventario(true); setResultadoInventario(null);
-    const maxIntentos = 5;
-
-    for (let intento = 1; intento <= maxIntentos; intento++) {
+    for (let intento = 1; intento <= 5; intento++) {
       try {
         setMensajeInventario("⏳ Extrayendo...");
         const tickets = await obtenerTicketsGlobales();
         const res = await fetch(`${API_BASE_URL}/inventario`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-        
-        if (!res.ok) throw new Error("Error 503"); 
-
+        if (!res.ok) throw new Error("Error"); 
         setResultadoInventario(await res.json()); 
         setVistaActual('inventario');
-        setLoadingInventario(false);
-        return; 
+        setLoadingInventario(false); return; 
       } catch (e) { 
-        if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
-          setLoadingInventario(false);
-          return;
-        }
-        for (let i = 60; i > 0; i--) {
-          setMensajeInventario(`🔄 EN COLA. Reintento en ${i}s...`);
-          await esperar(1000);
-        }
+        if (intento === 5) { alert("⚠️ Error de conexión."); setLoadingInventario(false); return; }
+        for (let i = 60; i > 0; i--) { setMensajeInventario(`🔄 EN COLA. Reintento en ${i}s...`); await esperar(1000); }
       } 
     }
   };
 
   const procesarDiligencias = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente primero.");
     setLoadingDiligencias(true); setResultadoDiligencias(null);
-    const maxIntentos = 5;
-
-    for (let intento = 1; intento <= maxIntentos; intento++) {
+    for (let intento = 1; intento <= 5; intento++) {
       try {
         setMensajeDiligencias("⏳ Evaluando...");
         const tickets = await obtenerTicketsGlobales();
         const res = await fetch(`${API_BASE_URL}/diligencias`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tickets }) });
-        
-        if (!res.ok) throw new Error("Error 503"); 
-
+        if (!res.ok) throw new Error("Error"); 
         setResultadoDiligencias(await res.json()); 
         setVistaActual('diligencias');
-        setLoadingDiligencias(false);
-        return;
+        setLoadingDiligencias(false); return;
       } catch (e) { 
-        if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
-          setLoadingDiligencias(false);
-          return;
-        }
-        for (let i = 60; i > 0; i--) {
-          setMensajeDiligencias(`🔄 EN COLA. Reintento en ${i}s...`);
-          await esperar(1000);
-        }
+        if (intento === 5) { alert("⚠️ Error de conexión."); setLoadingDiligencias(false); return; }
+        for (let i = 60; i > 0; i--) { setMensajeDiligencias(`🔄 EN COLA. Reintento en ${i}s...`); await esperar(1000); }
       } 
     }
   };
 
+  // NUEVA LÓGICA DEL REDACTOR (Enviando Plantilla + Instrucción)
   const procesarRedactor = async () => {
-    if (!instruccionRedactor) return alert("Por favor, ingresa una instrucción en el campo de texto.");
     if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
     
     setLoadingRedactor(true);
@@ -239,30 +177,28 @@ export default function FiscalDashboard() {
         setMensajeRedactor("⏳ Redactando...");
         const tickets = await obtenerTicketsGlobales();
         
-        // Petición POST esperando un archivo binario (Blob)
         const res = await fetch(`${API_BASE_URL}/generar-documento`, { 
             method: "POST", 
             headers: { "Content-Type": "application/json" }, 
-            body: JSON.stringify({ instruccion: instruccionRedactor, tickets }) 
+            body: JSON.stringify({ tipoDocumento, instruccion: instruccionRedactor, tickets }) 
         });
         
         if (!res.ok) throw new Error("Error 503"); 
 
-        // Lógica para procesar y descargar el Blob (.docx)
         const blob = await res.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = 'Disposicion_Generada.docx';
+        a.download = `Proyecto_${tipoDocumento.replace(/[^a-zA-Z0-9]/g, '_')}.docx`;
         document.body.appendChild(a);
         a.click();
         a.remove();
         
         setLoadingRedactor(false);
-        return; // Éxito
+        return; 
       } catch (e) { 
         if (intento === maxIntentos) {
-          alert("⚠️ Google sigue saturado después de varios intentos. Por favor, espera un par de minutos y vuelve a intentarlo."); 
+          alert("⚠️ Google sigue saturado. Por favor, espera un par de minutos y vuelve a intentarlo."); 
           setLoadingRedactor(false);
           return;
         }
@@ -274,9 +210,6 @@ export default function FiscalDashboard() {
     }
   };
 
-  // =====================================================================
-  // ESTILOS PREMIUM
-  // =====================================================================
   const styles = {
     container: { backgroundColor: '#0a0d14', backgroundImage: 'radial-gradient(circle at 50% 0%, #172033 0%, #0a0d14 70%)', color: '#f8fafc', minHeight: '100vh', padding: '2rem', fontFamily: 'system-ui, sans-serif' },
     cardBase: { backgroundColor: 'rgba(30, 41, 59, 0.4)', backdropFilter: 'blur(16px)', padding: '2rem', borderRadius: '28px', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', position: 'relative' },
@@ -285,9 +218,6 @@ export default function FiscalDashboard() {
     btnDownloadReport: { padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', border: '1px solid', background: 'transparent', fontWeight: 'bold', display: 'inline-block', marginTop: '20px' }
   };
 
-  // =====================================================================
-  // VISTAS DE RESULTADOS
-  // =====================================================================
   if (vistaActual === 'inventario' && resultadoInventario) {
     return (
       <div style={styles.container}>
@@ -337,65 +267,31 @@ export default function FiscalDashboard() {
     );
   }
 
-  // =====================================================================
-  // PANTALLA PRINCIPAL: MAESTRA + 4 ESCLAVAS
-  // =====================================================================
   return (
     <div style={styles.container}>
-      
       <style>
         {`
-          /* NUEVO: Quitar bordes blancos del navegador y forzar fondo oscuro */
-          html, body {
-            margin: 0;
-            padding: 0;
-            background-color: #0a0d14; /* Fondo oscuro base */
-            min-height: 100vh;
-            width: 100%;
-          }
-          
-          /* Evita que los padding sumen tamaño extra a los elementos */
-          * {
-            box-sizing: border-box;
-          }
-
+          html, body { margin: 0; padding: 0; background-color: #0a0d14; min-height: 100vh; width: 100%; }
+          * { box-sizing: border-box; }
           .tarjeta-animada { transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1); }
           .tarjeta-azul:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.4), inset 0 0 20px rgba(59, 130, 246, 0.1) !important; }
           .tarjeta-verde:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(16, 185, 129, 0.4), inset 0 0 20px rgba(16, 185, 129, 0.1) !important; }
           .tarjeta-roja:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.1) !important; }
           .tarjeta-morada:hover { transform: translateY(-5px); box-shadow: 0 25px 50px -12px rgba(139, 92, 246, 0.4), inset 0 0 20px rgba(139, 92, 246, 0.1) !important; }
           
-          @keyframes pulse-anim {
-            0% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(0.98); box-shadow: 0 0 20px currentColor; }
-            100% { opacity: 1; transform: scale(1); }
-          }
+          @keyframes pulse-anim { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.98); box-shadow: 0 0 20px currentColor; } 100% { opacity: 1; transform: scale(1); } }
           .btn-cargando { animation: pulse-anim 1.5s infinite ease-in-out; cursor: wait !important; pointer-events: none; }
 
-          /* CAJA PUNTEADA ARREGLADA */
-          .file-input-wrapper {
-            position: relative; overflow: hidden; display: block; width: 100%;
-            border: 2px dashed #64748b; padding: 30px; border-radius: 16px; text-align: center;
-            background: rgba(255,255,255,0.02); transition: 0.2s; cursor: pointer;
-          }
+          .file-input-wrapper { position: relative; overflow: hidden; display: block; width: 100%; border: 2px dashed #64748b; padding: 30px; border-radius: 16px; text-align: center; background: rgba(255,255,255,0.02); transition: 0.2s; cursor: pointer; }
           .file-input-wrapper:hover { border-color: #f8fafc; background: rgba(255,255,255,0.05); }
-          .file-input-wrapper input[type="file"] {
-            font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%;
-          }
+          .file-input-wrapper input[type="file"] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
           .file-label { color: #f8fafc; font-size: 1.1rem; font-weight: 500; pointer-events: none; }
           
-          .btn-principal {
-            width: 100%; padding: 0.85rem; border-radius: 14px; font-weight: bold; cursor: pointer;
-            border: none; color: #fff; transition: 0.2s; text-transform: uppercase; letter-spacing: 0.5px;
-          }
+          .btn-principal { width: 100%; padding: 0.85rem; border-radius: 14px; font-weight: bold; cursor: pointer; border: none; color: #fff; transition: 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
           .btn-principal:hover:not(:disabled) { filter: brightness(1.2); }
           .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }
           
-          /* INPUST DE LA TARJETA REDACTOR */
-          .input-redactor {
-            width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #475569;
-            background: rgba(0,0,0,0.2); color: #fff; font-size: 0.95rem; margin-bottom: 15px; outline: none; transition: 0.3s;
-          }
+          .input-redactor { width: 100%; padding: 12px; border-radius: 10px; border: 1px solid #475569; background: rgba(0,0,0,0.2); color: #fff; font-size: 0.95rem; margin-bottom: 10px; outline: none; transition: 0.3s; }
           .input-redactor:focus { border-color: #a78bfa; box-shadow: 0 0 10px rgba(139, 92, 246, 0.3); }
         `}
       </style>
@@ -407,9 +303,6 @@ export default function FiscalDashboard() {
         <p style={{ color: '#64748b', fontSize: '1.2rem', marginTop: '10px' }}>Asistencia de Proyecciones Estratégicas</p>
       </div>
 
-      {/* ================================================================= */}
-      {/* TARJETA MAESTRA (1 Arriba) */}
-      {/* ================================================================= */}
       <div style={{ maxWidth: '800px', margin: '0 auto 3rem auto' }}>
         <div style={{ ...styles.cardBase, boxShadow: '0 10px 30px rgba(0,0,0,0.5)', borderTop: '2px solid rgba(255, 255, 255, 0.2)', textAlign: 'center' }}>
           <h2 style={{ color: '#fff', fontSize: '1.5rem', margin: '0 0 1rem 0' }}>📁 Expediente Principal</h2>
@@ -432,19 +325,15 @@ export default function FiscalDashboard() {
         </div>
       </div>
       
-      {/* ================================================================= */}
-      {/* TARJETAS HERRAMIENTAS (4 Abajo) */}
-      {/* ================================================================= */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2.5rem', maxWidth: '1400px', margin: '0 auto' }}>
         
-        {/* TARJETA 1: AZUL (RESUMEN) */}
+        {/* RESUMEN */}
         <div className="tarjeta-animada tarjeta-azul" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(59, 130, 246, 0.15)', borderTop: '2px solid rgba(59, 130, 246, 0.5)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🧠</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Resumen</h2>
           </div>
           <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Analiza hechos, cronología y sustento legal del expediente.</p>
-          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarResumen} disabled={loadingResumen || archivosGlobales.length === 0} className={`btn-principal ${loadingResumen ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingResumen ? '#3b82f6' : '#2563eb' }}>
               {loadingResumen ? mensajeResumen : "Generar Análisis"}
@@ -453,14 +342,13 @@ export default function FiscalDashboard() {
           </div>
         </div>
 
-        {/* TARJETA 2: VERDE (INVENTARIO) */}
+        {/* INVENTARIO */}
         <div className="tarjeta-animada tarjeta-verde" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(16, 185, 129, 0.15)', borderTop: '2px solid rgba(16, 185, 129, 0.5)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🕵️‍♂️</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Inventario</h2>
           </div>
           <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Extrae pruebas e ignora el ruido procesal. Corta el PDF exacto.</p>
-          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarInventario} disabled={loadingInventario || archivosGlobales.length === 0} className={`btn-principal ${loadingInventario ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingInventario ? '#10b981' : '#059669' }}>
               {loadingInventario ? mensajeInventario : "Generar Inventario"}
@@ -469,14 +357,13 @@ export default function FiscalDashboard() {
           </div>
         </div>
 
-        {/* TARJETA 3: ROJO (DILIGENCIAS) */}
+        {/* DILIGENCIAS */}
         <div className="tarjeta-animada tarjeta-roja" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(239, 68, 68, 0.15)', borderTop: '2px solid rgba(239, 68, 68, 0.5)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🎯</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Diligencias</h2>
           </div>
           <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Identifica vacíos y sugiere actos procesales para formalizar.</p>
-          
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarDiligencias} disabled={loadingDiligencias || archivosGlobales.length === 0} className={`btn-principal ${loadingDiligencias ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingDiligencias ? '#ef4444' : '#dc2626' }}>
               {loadingDiligencias ? mensajeDiligencias : "Analizar Estrategia"}
@@ -485,17 +372,28 @@ export default function FiscalDashboard() {
           </div>
         </div>
 
-        {/* TARJETA 4: MORADO (REDACTOR JURÍDICO) */}
+        {/* REDACTOR JURÍDICO MEJORADO */}
         <div className="tarjeta-animada tarjeta-morada" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(139, 92, 246, 0.15)', borderTop: '2px solid rgba(139, 92, 246, 0.5)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>✍️</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Redactor</h2>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '1rem' }}>Genera disposiciones en Word (.docx) listas para imprimir.</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1rem' }}>Genera disposiciones estructuradas y precisas en formato Word (.docx).</p>
           
+          <select 
+            value={tipoDocumento} 
+            onChange={(e) => setTipoDocumento(e.target.value)} 
+            className="input-redactor"
+            style={{ fontWeight: 'bold', backgroundColor: 'rgba(139, 92, 246, 0.1)' }}
+          >
+            <option value="Disposición de Archivo (No Ha Lugar)">Disposición de Archivo (No Ha Lugar)</option>
+            <option value="Disposición de Formalización">Disposición de Formalización</option>
+            <option value="Requerimiento Acusatorio">Requerimiento Acusatorio</option>
+          </select>
+
           <input 
             type="text" 
-            placeholder='Ej: "Generar disposición..."'
+            placeholder='Instrucción extra (Ej: Carpeta 123-2024)'
             value={instruccionRedactor}
             onChange={(e) => setInstruccionRedactor(e.target.value)}
             className="input-redactor"

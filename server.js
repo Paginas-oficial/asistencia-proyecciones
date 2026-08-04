@@ -313,74 +313,120 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
 // RUTA 5: REDACTOR JURÍDICO - GENERADOR DE WORD (.DOCX)
 // =================================================================
 app.post('/api/generar-documento', async (req, res) => {
-    try {
-        const { instruccion, tickets } = req.body;
-        
-        if (!instruccion) return res.status(400).json({ error: "Falta la instrucción." });
+  try {
+      const { tipoDocumento, instruccion, tickets } = req.body;
+      if (!tickets) return res.status(400).json({ error: "Faltan tickets." });
 
-        console.log(`[Ruta 5] Iniciando redacción jurídica Word: "${instruccion}"`);
+      console.log(`[Ruta 5] Iniciando redacción de plantilla: ${tipoDocumento} | ${instruccion}`);
 
-        const promptRedaccion = `
-Eres un Fiscal Provincial Especializado en Delitos de Corrupción de Funcionarios. 
-Tu tarea es redactar un documento legal completo, profesional y extenso, siguiendo ESTRICTAMENTE la instrucción del usuario: "${instruccion}".
+      // 1. EL PROMPT DE DÉBORA, ADAPTADO PARA DEVOLVER EL MOLDE JSON
+      const promptRedaccion = `
+Rol: Asume el rol de un Fiscal Provincial Titular de una Fiscalía Especializada, jurista experto en Derecho Penal (Parte General y Especial) y Derecho Procesal Penal peruano. Eres, además, un maestro de la lingüística y la argumentación jurídica.
 
-REGLAS DE FORMATO Y ESTRUCTURA OBLIGATORIAS:
-Debes imitar el estilo, tono y estructura de este modelo base:
-1. Iniciar con el encabezado institucional: "MINISTERIO PÚBLICO PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS -SEGUNDO DESPACHO-".
-2. Incluir los datos de identificación: Carpeta Fiscal, Investigados, Agraviado, Delito, Fiscal a Cargo y Asistente.
-3. Estructurar el cuerpo obligatoriamente con estos subtítulos (en mayúsculas):
-   - DADO CUENTA
-   - DEL MINISTERIO PÚBLICO
-   - HECHOS DENUNCIADOS E INVESTIGADOS
-   - CALIFICACIÓN JURÍDICO-PENAL DE LOS HECHOS DENUNCIADOS
-   - ELEMENTOS DE CONVICCIÓN
-   - PRONUNCIAMIENTO FINAL DE ESTE DESPACHO PROVINCIAL
-   - DISPOSICIÓN
-4. Utilizar lenguaje técnico-jurídico riguroso, citando principios penales y procesales correspondientes (ej. Principio de Lesividad, Mínima Intervención).
-5. Extrae los nombres, montos, delitos y datos exactos de los documentos PDF adjuntos para nutrir los "Elementos de Convicción" y los "Hechos Denunciados". Si falta algún dato menor, infiérelo lógicamente, pero mantén la precisión de la prueba.
+Objetivo Principal: Analizar la carpeta fiscal proporcionada en formato PDF y proyectar la fundamentación jurídica para una ${tipoDocumento}.
+Instrucciones Adicionales del Fiscal: "${instruccion}"
 
-NO incluyas introducciones como "Aquí tienes el documento". Inicia directamente con el encabezado del Ministerio Público.
-`;
+Instrucciones de Ejecución y Metodología (De Cumplimiento Estricto):
+Paso 1: Procesamiento y Síntesis de la Imputación.
+Paso 2: Evaluación de Actos de Investigación (Regla de Nomenclatura Estricta). Cada vez que menciones un documento de los actuados, DEBES consignar su nomenclatura completa, su fecha exacta, y el nombre/cargo de quien lo suscribe.
+Paso 3: Construcción de la Fundamentación (El Núcleo). Desarrolla el análisis jurídico (Análisis del Tipo Penal, Juicio de Subsunción y Refutación de Indicios).
+Paso 4: Fidelidad Absoluta (Cero Invención). Tu análisis debe nacer 100% de la evidencia documental suministrada. Redacción formal, cero divagación.
 
-        // Llamamos al motor con el parámetro requiereJson en 'false' para obtener texto plano puro
-        let textoGenerado = await analizarTicketsConGemini(tickets || [], promptRedaccion, false);
-        
-        // Convertimos el texto generado por la IA en un formato que Word entienda (Párrafos)
-        const parrafosTexto = textoGenerado.split('\n').filter(p => p.trim() !== '');
-        
-        const parrafosWord = parrafosTexto.map(texto => {
-            return new Paragraph({
-                children: [new TextRun(texto)],
-                spacing: { after: 200 },
-                alignment: AlignmentType.JUSTIFIED,
-            });
-        });
+Formato de Salida EXIGIDO:
+ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
+{
+"identificacion": "Indica Carpeta Fiscal, Nombres de Investigados, Agraviado y Delito (una línea).",
+"dadoCuenta": "Redacta el texto del Oficio/Documento de denuncia inicial.",
+"hechosDenunciados": "Síntesis clara de la imputación.",
+"calificacionJuridica": "Análisis del tipo penal y citas relevantes.",
+"elementosConviccion": "Lista enumerada o párrafos con la nomenclatura estricta de documentos.",
+"analisisYConclusion": "Tu juicio de subsunción, refutación de indicios y conclusión lógica aplicable al tipo de documento."
+}`;
 
-        const doc = new Document({
-            sections: [{
-                properties: {},
-                children: parrafosWord,
-            }],
-        });
+      // Llamamos al motor obligando a devolver JSON
+      let textoCrudo = await analizarTicketsConGemini(tickets, promptRedaccion, true);
+      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
+      
+      let datosGenerados;
+      try {
+          datosGenerados = JSON.parse(textoCrudo);
+      } catch (e) {
+          console.log("Error parseando el JSON del redactor. Rescatando datos parciales.");
+          datosGenerados = {
+              identificacion: "Datos inferidos del expediente.",
+              dadoCuenta: "Documentos ingresados a la Fiscalía.",
+              hechosDenunciados: "Hechos materia de investigación.",
+              calificacionJuridica: "Análisis del tipo penal.",
+              elementosConviccion: "Elementos recabados.",
+              analisisYConclusion: textoCrudo // volcamos todo si falla
+          };
+      }
 
-        // Empaquetamos el archivo y lo enviamos al navegador para su descarga
-        const buffer = await Packer.toBuffer(doc);
-        
-        res.setHeader('Content-Disposition', 'attachment; filename=Disposicion_Fiscal.docx');
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        res.send(buffer);
-        console.log(`[Ruta 5] ✅ Documento Word generado y enviado exitosamente.`);
+      // 2. CONSTRUCCIÓN DE LA PLANTILLA WORD (DOCX)
+      // Aquí armamos el esqueleto (las partes NO subrayadas quedan fijas)
+      const crearParrafo = (texto, bold = false, alignment = AlignmentType.JUSTIFIED) => {
+          return new Paragraph({
+              children: [new TextRun({ text: texto, bold: bold, font: "Arial", size: 24 })], // Size 24 = 12pt
+              spacing: { after: 200 },
+              alignment: alignment,
+          });
+      };
 
-    } catch (error) {
-        console.error("Error al generar el documento Word:", error);
-        res.status(500).json({ error: "Fallo al generar el archivo Word." });
-    }
+      const doc = new Document({
+          sections: [{
+              properties: {},
+              children: [
+                  // ENCABEZADO FIJO
+                  crearParrafo("MINISTERIO PÚBLICO", true, AlignmentType.CENTER),
+                  crearParrafo("PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS", true, AlignmentType.CENTER),
+                  crearParrafo("-SEGUNDO DESPACHO-", true, AlignmentType.CENTER),
+                  crearParrafo(""), 
+                  
+                  // DATOS DINÁMICOS (De la IA)
+                  crearParrafo(`REFERENCIA: ${datosGenerados.identificacion}`, false, AlignmentType.LEFT),
+                  crearParrafo(""),
+                  crearParrafo(tipoDocumento.toUpperCase(), true, AlignmentType.CENTER),
+                  crearParrafo(""),
+
+                  // CUERPO DEL DOCUMENTO (Estructura Fija + Contenido de IA)
+                  crearParrafo("DADO CUENTA:", true),
+                  crearParrafo(datosGenerados.dadoCuenta),
+
+                  crearParrafo("DEL MINISTERIO PÚBLICO:", true),
+                  crearParrafo("El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, actuando bajo el principio de objetividad e imputación necesaria."),
+
+                  crearParrafo("HECHOS DENUNCIADOS E INVESTIGADOS:", true),
+                  crearParrafo(datosGenerados.hechosDenunciados),
+
+                  crearParrafo("CALIFICACIÓN JURÍDICO-PENAL:", true),
+                  crearParrafo(datosGenerados.calificacionJuridica),
+
+                  crearParrafo("ELEMENTOS DE CONVICCIÓN:", true),
+                  crearParrafo(datosGenerados.elementosConviccion),
+
+                  crearParrafo("PRONUNCIAMIENTO DE ESTE DESPACHO PROVINCIAL:", true),
+                  crearParrafo(datosGenerados.analisisYConclusion),
+              ],
+          }],
+      });
+
+      // 3. ENVÍO DEL ARCHIVO
+      const buffer = await Packer.toBuffer(doc);
+      res.setHeader('Content-Disposition', 'attachment; filename=Proyecto_Fiscal.docx');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.send(buffer);
+      console.log(`[Ruta 5] ✅ Documento Word basado en Plantilla generado exitosamente.`);
+
+  } catch (error) {
+      console.error("Error al generar el documento Word:", error);
+      res.status(500).json({ error: "Fallo al generar el archivo Word." });
+  }
 });
 
 const servidorConfigurado = app.listen(puerto, () => {
-    console.log(`=================================================`);
-    console.log(`Servidor Modular de Alta Calidad en http://localhost:${puerto}`);
-    console.log(`Listo para recibir partes de PDFs en cola.`);
-    console.log(`=================================================`);
+  console.log(`=================================================`);
+  console.log(`Servidor Modular de Alta Calidad en http://localhost:${puerto}`);
+  console.log(`Listo para recibir partes de PDFs en cola.`);
+  console.log(`=================================================`);
 });
 servidorConfigurado.timeout = 10 * 60 * 1000;
