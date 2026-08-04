@@ -345,88 +345,174 @@ ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
 
       // Llamamos al motor obligando a devolver JSON
       let textoCrudo = await analizarTicketsConGemini(tickets, promptRedaccion, true);
-      textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
-      
-      let datosGenerados;
-      try {
-          datosGenerados = JSON.parse(textoCrudo);
-      } catch (e) {
-          console.log("Error parseando el JSON del redactor. Rescatando datos parciales.");
-          datosGenerados = {
-              identificacion: "Datos inferidos del expediente.",
-              dadoCuenta: "Documentos ingresados a la Fiscalía.",
-              hechosDenunciados: "Hechos materia de investigación.",
-              calificacionJuridica: "Análisis del tipo penal.",
-              elementosConviccion: "Elementos recabados.",
-              analisisYConclusion: textoCrudo // volcamos todo si falla
-          };
-      }
+        textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
+        
+        let datos;
+        try {
+            datos = JSON.parse(textoCrudo);
+        } catch (e) {
+            console.log("Error parseando JSON, aplicando rescate de emergencia.");
+            datos = {
+                carpetaFiscal: "S/N", investigados: "Los que resulten responsables", agraviado: "El Estado", 
+                delito: "Por determinar", fiscal: "Yeltsin L. A. Leiva Chara", asistente: "Debora J. Sotelo Ahuanari",
+                nroDisposicion: "S/N", fechaLarga: "Lima, a la fecha de su emisión",
+                dadoCuenta: "Información extraída no estructurada correctamente.",
+                hechosDenunciados: textoCrudo, calificacionJuridica: "", elementosConviccion: "", analisisYConclusion: ""
+            };
+        }
 
-      // 2. CONSTRUCCIÓN DE LA PLANTILLA WORD (DOCX)
-      // Aquí armamos el esqueleto (las partes NO subrayadas quedan fijas)
-      const crearParrafo = (texto, bold = false, alignment = AlignmentType.JUSTIFIED) => {
-          return new Paragraph({
-              children: [new TextRun({ text: texto, bold: bold, font: "Arial", size: 24 })], // Size 24 = 12pt
-              spacing: { after: 200 },
-              alignment: alignment,
-          });
-      };
+        // =========================================================
+        // 2. HERRAMIENTAS DE MAQUETACIÓN VISUAL (DOCX)
+        // =========================================================
+        
+        // Párrafo estándar (Arial 11 = size 22)
+        const crearParrafo = (texto, bold = false, alignment = AlignmentType.JUSTIFIED, italics = false) => {
+            return new Paragraph({
+                children: [new TextRun({ text: texto, bold: bold, italics: italics, font: "Arial", size: 22 })],
+                alignment: alignment,
+                spacing: { after: 120, line: 276 }, // Espaciado natural interlineado
+            });
+        };
 
-      const doc = new Document({
-          sections: [{
-              properties: {},
-              children: [
-                  // ENCABEZADO FIJO
-                  crearParrafo("MINISTERIO PÚBLICO", true, AlignmentType.CENTER),
-                  crearParrafo("PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS", true, AlignmentType.CENTER),
-                  crearParrafo("-SEGUNDO DESPACHO-", true, AlignmentType.CENTER),
-                  crearParrafo(""), 
-                  
-                  // DATOS DINÁMICOS (De la IA)
-                  crearParrafo(`REFERENCIA: ${datosGenerados.identificacion}`, false, AlignmentType.LEFT),
-                  crearParrafo(""),
-                  crearParrafo(tipoDocumento.toUpperCase(), true, AlignmentType.CENTER),
-                  crearParrafo(""),
+        // Párrafo para los metadatos alineados con tabulaciones
+        const crearDatoEncabezado = (etiqueta, valor) => {
+            return new Paragraph({
+                children: [
+                    new TextRun({ text: etiqueta, font: "Arial", size: 20 }), // Arial 10 para la cabecera
+                    new TextRun({ text: `\t: ${valor}`, font: "Arial", size: 20 })
+                ],
+                tabStops: [{ type: TabStopType.LEFT, position: 2200 }], // Tabulación para alinear los ":"
+                spacing: { after: 40 },
+                alignment: AlignmentType.LEFT,
+            });
+        };
 
-                  // CUERPO DEL DOCUMENTO (Estructura Fija + Contenido de IA)
-                  crearParrafo("DADO CUENTA:", true),
-                  crearParrafo(datosGenerados.dadoCuenta),
+        // Títulos Romanos (I. Negrita, pero solo texto subrayado)
+        const crearTituloRomano = (numeroRomano, texto) => {
+            return new Paragraph({
+                children: [
+                    new TextRun({ text: `${numeroRomano}.\t`, bold: true, font: "Arial", size: 22 }),
+                    new TextRun({ text: texto, bold: true, underline: {}, font: "Arial", size: 22 })
+                ],
+                alignment: AlignmentType.LEFT,
+                spacing: { before: 300, after: 150 },
+                tabStops: [{ type: TabStopType.LEFT, position: 720 }] // Tabulación para sangría del número
+            });
+        };
 
-                  crearParrafo("DEL MINISTERIO PÚBLICO:", true),
-                  crearParrafo("El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, actuando bajo el principio de objetividad e imputación necesaria."),
+        // Convierte el texto gigante de la IA en múltiples párrafos bonitos
+        const procesarTextoMultilinea = (texto) => {
+            if (!texto) return [crearParrafo("")];
+            return texto.split('\n').filter(p => p.trim() !== '').map(p => crearParrafo(p.trim()));
+        };
 
-                  crearParrafo("HECHOS DENUNCIADOS E INVESTIGADOS:", true),
-                  crearParrafo(datosGenerados.hechosDenunciados),
+        // =========================================================
+        // 3. CONSTRUCCIÓN ESTRUCTURAL DEL DOCUMENTO
+        // =========================================================
+        
+        // Tabla invisible para dividir el encabezado en dos (Izquierda y Derecha)
+        const tablaEncabezado = new Table({
+            width: { size: 100, type: WidthType.PERCENTAGE },
+            borders: {
+                top: { style: BorderStyle.NONE }, bottom: { style: BorderStyle.NONE },
+                left: { style: BorderStyle.NONE }, right: { style: BorderStyle.NONE },
+                insideHorizontal: { style: BorderStyle.NONE }, insideVertical: { style: BorderStyle.NONE },
+            },
+            rows: [
+                new TableRow({
+                    children: [
+                        new TableCell({
+                            width: { size: 45, type: WidthType.PERCENTAGE },
+                            children: [
+                                // Aquí puedes agregar la imagen del logo en el futuro si lo deseas
+                                crearParrafo("MINISTERIO PÚBLICO", true, AlignmentType.CENTER),
+                                crearParrafo("PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS", true, AlignmentType.CENTER),
+                                crearParrafo("-SEGUNDO DESPACHO-", true, AlignmentType.CENTER),
+                            ],
+                        }),
+                        new TableCell({
+                            width: { size: 55, type: WidthType.PERCENTAGE },
+                            children: [
+                                crearParrafo('"Año de la Esperanza y el Fortalecimiento de la Democracia"', false, AlignmentType.CENTER, true),
+                                crearParrafo(""), // Espacio
+                                crearDatoEncabezado("CARPETA FISCAL", datos.carpetaFiscal),
+                                crearDatoEncabezado("INVESTIGADOS", datos.investigados),
+                                crearDatoEncabezado("AGRAVIADO", datos.agraviado),
+                                crearDatoEncabezado("DELITO", datos.delito),
+                                crearDatoEncabezado("FISCAL A CARGO", datos.fiscal),
+                                crearDatoEncabezado("ASISTENTE", datos.asistente),
+                            ],
+                        }),
+                    ],
+                }),
+            ],
+        });
 
-                  crearParrafo("CALIFICACIÓN JURÍDICO-PENAL:", true),
-                  crearParrafo(datosGenerados.calificacionJuridica),
+        // Ensamble final del documento
+        const doc = new Document({
+            sections: [{
+                properties: {
+                    page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } // Márgenes de 2.5cm
+                },
+                children: [
+                    tablaEncabezado,
+                    new Paragraph({ spacing: { before: 400, after: 400 } }), // Salto de línea amplio
+                    
+                    // TÍTULO CENTRAL GIGANTE
+                    new Paragraph({
+                        children: [new TextRun({ text: tipoDocumento.toUpperCase(), bold: true, font: "Arial", size: 28 })],
+                        alignment: AlignmentType.CENTER,
+                        spacing: { after: 300 }
+                    }),
 
-                  crearParrafo("ELEMENTOS DE CONVICCIÓN:", true),
-                  crearParrafo(datosGenerados.elementosConviccion),
+                    // NRO DE DISPOSICIÓN Y FECHA
+                    new Paragraph({
+                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${datos.nroDisposicion}`, bold: true, underline: {}, font: "Arial", size: 24 })],
+                        spacing: { after: 50 }
+                    }),
+                    new Paragraph({
+                        children: [new TextRun({ text: datos.fechaLarga, font: "Arial", size: 24, bold: true })],
+                        spacing: { after: 400 }
+                    }),
 
-                  crearParrafo("PRONUNCIAMIENTO DE ESTE DESPACHO PROVINCIAL:", true),
-                  crearParrafo(datosGenerados.analisisYConclusion),
-              ],
-          }],
-      });
+                    // CUERPO DEL DOCUMENTO
+                    crearTituloRomano("I", "DADO CUENTA"),
+                    ...procesarTextoMultilinea(datos.dadoCuenta),
 
-      // 3. ENVÍO DEL ARCHIVO
-      const buffer = await Packer.toBuffer(doc);
-      res.setHeader('Content-Disposition', 'attachment; filename=Proyecto_Fiscal.docx');
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.send(buffer);
-      console.log(`[Ruta 5] ✅ Documento Word basado en Plantilla generado exitosamente.`);
+                    crearTituloRomano("II", "DEL MINISTERIO PÚBLICO"),
+                    crearParrafo("El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, actuando bajo el principio de objetividad e imputación necesaria."),
 
-  } catch (error) {
-      console.error("Error al generar el documento Word:", error);
-      res.status(500).json({ error: "Fallo al generar el archivo Word." });
-  }
+                    crearTituloRomano("III", "HECHOS DENUNCIADOS E INVESTIGADOS"),
+                    ...procesarTextoMultilinea(datos.hechosDenunciados),
+
+                    crearTituloRomano("IV", "CALIFICACIÓN JURÍDICO-PENAL"),
+                    ...procesarTextoMultilinea(datos.calificacionJuridica),
+
+                    crearTituloRomano("V", "ELEMENTOS DE CONVICCIÓN"),
+                    ...procesarTextoMultilinea(datos.elementosConviccion),
+
+                    crearTituloRomano("VI", "PRONUNCIAMIENTO DE ESTE DESPACHO PROVINCIAL"),
+                    ...procesarTextoMultilinea(datos.analisisYConclusion),
+                ],
+            }],
+        });
+
+        // 4. EMPAQUETADO Y ENVÍO
+        const buffer = await Packer.toBuffer(doc);
+        res.setHeader('Content-Disposition', 'attachment; filename=Proyecto_Fiscal.docx');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+        res.send(buffer);
+        console.log(`[Ruta 5] ✅ Documento Word maquetado generado exitosamente.`);
+
+    } catch (error) {
+        console.error("Error al generar el documento Word:", error);
+        res.status(500).json({ error: "Fallo al generar el archivo Word." });
+    }
 });
 
 const servidorConfigurado = app.listen(puerto, () => {
-  console.log(`=================================================`);
-  console.log(`Servidor Modular de Alta Calidad en http://localhost:${puerto}`);
-  console.log(`Listo para recibir partes de PDFs en cola.`);
-  console.log(`=================================================`);
+    console.log(`=================================================`);
+    console.log(`Servidor Modular Listo en puerto: ${puerto}`);
+    console.log(`=================================================`);
 });
 servidorConfigurado.timeout = 10 * 60 * 1000;
