@@ -313,38 +313,43 @@ app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) 
 // RUTA 5: REDACTOR JURÍDICO - GENERADOR DE WORD (.DOCX)
 // =================================================================
 app.post('/api/generar-documento', async (req, res) => {
-  try {
-      const { tipoDocumento, instruccion, tickets } = req.body;
-      if (!tickets) return res.status(400).json({ error: "Faltan tickets." });
+    try {
+        const { tipoDocumento, instruccion, tickets } = req.body;
+        if (!tickets) return res.status(400).json({ error: "Faltan tickets." });
 
-      console.log(`[Ruta 5] Iniciando redacción de plantilla: ${tipoDocumento} | ${instruccion}`);
+        console.log(`[Ruta 5] Iniciando redacción de plantilla visual: ${tipoDocumento}`);
 
-      // 1. EL PROMPT DE DÉBORA, ADAPTADO PARA DEVOLVER EL MOLDE JSON
-      const promptRedaccion = `
-Rol: Asume el rol de un Fiscal Provincial Titular de una Fiscalía Especializada, jurista experto en Derecho Penal (Parte General y Especial) y Derecho Procesal Penal peruano. Eres, además, un maestro de la lingüística y la argumentación jurídica.
+        // DATOS FIJOS (Ahorro masivo de tokens y Cero "undefined")
+        const FISCAL_FIJO = "Yeltsin L. A. Leiva Chara";
+        const ASISTENTE_FIJO = "Debora J. Sotelo Ahuanari";
+        const AGRAVIADO_FIJO = "El Estado";
 
-Objetivo Principal: Analizar la carpeta fiscal proporcionada en formato PDF y proyectar la fundamentación jurídica para una ${tipoDocumento}.
-Instrucciones Adicionales del Fiscal: "${instruccion}"
+        // PROMPT DE EXTRACCIÓN (Solo pide lo que realmente necesita procesar)
+        const promptRedaccion = `
+Rol: Eres un Fiscal Provincial Titular, jurista experto en Derecho Penal.
 
-Instrucciones de Ejecución y Metodología (De Cumplimiento Estricto):
-Paso 1: Procesamiento y Síntesis de la Imputación.
-Paso 2: Evaluación de Actos de Investigación (Regla de Nomenclatura Estricta). Cada vez que menciones un documento de los actuados, DEBES consignar su nomenclatura completa, su fecha exacta, y el nombre/cargo de quien lo suscribe.
-Paso 3: Construcción de la Fundamentación (El Núcleo). Desarrolla el análisis jurídico (Análisis del Tipo Penal, Juicio de Subsunción y Refutación de Indicios).
-Paso 4: Fidelidad Absoluta (Cero Invención). Tu análisis debe nacer 100% de la evidencia documental suministrada. Redacción formal, cero divagación.
+Objetivo: Analizar la carpeta fiscal (PDFs adjuntos) y extraer información para una ${tipoDocumento}.
+Instrucción Adicional: "${instruccion}"
 
-Formato de Salida EXIGIDO:
-ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
+REGLAS DE OBLIGATORIO CUMPLIMIENTO:
+1. Extrae los metadatos solicitados. Si un dato no existe, NUNCA devuelvas "undefined" ni "null". Usa "S/N" o "Por determinar".
+2. Desarrolla la argumentación jurídica detallada según tu rol experto. Usa nomenclatura estricta para los documentos probatorios.
+
+Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
 {
-"identificacion": "Indica Carpeta Fiscal, Nombres de Investigados, Agraviado y Delito (una línea).",
-"dadoCuenta": "Redacta el texto del Oficio/Documento de denuncia inicial.",
-"hechosDenunciados": "Síntesis clara de la imputación.",
-"calificacionJuridica": "Análisis del tipo penal y citas relevantes.",
-"elementosConviccion": "Lista enumerada o párrafos con la nomenclatura estricta de documentos.",
-"analisisYConclusion": "Tu juicio de subsunción, refutación de indicios y conclusión lógica aplicable al tipo de documento."
+  "carpetaFiscal": "Ej: 123-2024",
+  "investigados": "Nombres completos o 'Los que resulten responsables'",
+  "delito": "Tipo penal",
+  "nroDisposicion": "Ej: 04",
+  "fechaLarga": "Ej: Lima, treinta de julio de dos mil veintiséis",
+  "dadoCuenta": "Redacta el sustento inicial (documento que da origen).",
+  "hechosDenunciados": "Síntesis de la imputación.",
+  "calificacionJuridica": "Análisis del tipo penal.",
+  "elementosConviccion": "Argumentación de las pruebas.",
+  "analisisYConclusion": "Juicio de subsunción y conclusión."
 }`;
 
-      // Llamamos al motor obligando a devolver JSON
-      let textoCrudo = await analizarTicketsConGemini(tickets, promptRedaccion, true);
+        let textoCrudo = await analizarTicketsConGemini(tickets, promptRedaccion, true);
         textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
         
         let datos;
@@ -353,41 +358,55 @@ ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
         } catch (e) {
             console.log("Error parseando JSON, aplicando rescate de emergencia.");
             datos = {
-                carpetaFiscal: "S/N", investigados: "Los que resulten responsables", agraviado: "El Estado", 
-                delito: "Por determinar", fiscal: "Yeltsin L. A. Leiva Chara", asistente: "Debora J. Sotelo Ahuanari",
+                carpetaFiscal: "S/N", investigados: "Los que resulten responsables", delito: "Por determinar", 
                 nroDisposicion: "S/N", fechaLarga: "Lima, a la fecha de su emisión",
                 dadoCuenta: "Información extraída no estructurada correctamente.",
                 hechosDenunciados: textoCrudo, calificacionJuridica: "", elementosConviccion: "", analisisYConclusion: ""
             };
         }
 
+        // FUNCIÓN ANTI-UNDEFINED: Limpia cualquier "undefined" que la IA haya alucinado
+        const limpiarValor = (valor, porDefecto) => {
+            if (!valor || valor === "undefined" || valor === "null" || valor.trim() === "") return porDefecto;
+            return valor;
+        };
+
         // =========================================================
-        // 2. HERRAMIENTAS DE MAQUETACIÓN VISUAL (DOCX)
+        // HERRAMIENTAS DE MAQUETACIÓN VISUAL (DOCX)
         // =========================================================
         
-        // Párrafo estándar (Arial 11 = size 22)
+        // Párrafo estándar para el cuerpo (Arial 11 = size 22)
         const crearParrafo = (texto, bold = false, alignment = AlignmentType.JUSTIFIED, italics = false) => {
             return new Paragraph({
                 children: [new TextRun({ text: texto, bold: bold, italics: italics, font: "Arial", size: 22 })],
                 alignment: alignment,
-                spacing: { after: 120, line: 276 }, // Espaciado natural interlineado
+                spacing: { after: 120, line: 276 }, 
             });
         };
 
-        // Párrafo para los metadatos alineados con tabulaciones
+        // NUEVO: Párrafo exclusivo para el encabezado (Tamaño 8 = size 16)
+        const crearParrafoEncabezado = (texto, bold = false, alignment = AlignmentType.CENTER, italics = false) => {
+            return new Paragraph({
+                children: [new TextRun({ text: texto, bold: bold, italics: italics, font: "Arial", size: 16 })], // size 16 = 8pt
+                alignment: alignment,
+                spacing: { after: 0, line: 240 },
+            });
+        };
+
+        // NUEVO: Párrafo de metadatos (Tamaño 8) con tabulación y empujado 1cm a la derecha
         const crearDatoEncabezado = (etiqueta, valor) => {
             return new Paragraph({
                 children: [
-                    new TextRun({ text: etiqueta, font: "Arial", size: 20 }), // Arial 10 para la cabecera
-                    new TextRun({ text: `\t: ${valor}`, font: "Arial", size: 20 })
+                    new TextRun({ text: etiqueta, font: "Arial", size: 16 }),
+                    new TextRun({ text: `\t: ${valor}`, font: "Arial", size: 16 })
                 ],
-                tabStops: [{ type: TabStopType.LEFT, position: 2200 }], // Tabulación para alinear los ":"
-                spacing: { after: 40 },
+                tabStops: [{ type: TabStopType.LEFT, position: 2000 }], // Alinea los dos puntos ":"
+                spacing: { after: 0, line: 240 },
                 alignment: AlignmentType.LEFT,
+                indent: { left: 567 } // 567 twips = exactamente 1 Centímetro a la derecha
             });
         };
 
-        // Títulos Romanos (I. Negrita, pero solo texto subrayado)
         const crearTituloRomano = (numeroRomano, texto) => {
             return new Paragraph({
                 children: [
@@ -396,21 +415,20 @@ ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
                 ],
                 alignment: AlignmentType.LEFT,
                 spacing: { before: 300, after: 150 },
-                tabStops: [{ type: TabStopType.LEFT, position: 720 }] // Tabulación para sangría del número
+                tabStops: [{ type: TabStopType.LEFT, position: 720 }] 
             });
         };
 
-        // Convierte el texto gigante de la IA en múltiples párrafos bonitos
         const procesarTextoMultilinea = (texto) => {
             if (!texto) return [crearParrafo("")];
             return texto.split('\n').filter(p => p.trim() !== '').map(p => crearParrafo(p.trim()));
         };
 
         // =========================================================
-        // 3. CONSTRUCCIÓN ESTRUCTURAL DEL DOCUMENTO
+        // CONSTRUCCIÓN ESTRUCTURAL DEL DOCUMENTO
         // =========================================================
         
-        // Tabla invisible para dividir el encabezado en dos (Izquierda y Derecha)
+        // Tabla invisible para el membrete dividido
         const tablaEncabezado = new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             borders: {
@@ -421,26 +439,27 @@ ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
             rows: [
                 new TableRow({
                     children: [
+                        // COLUMNA IZQUIERDA (Logo y Ministerio)
                         new TableCell({
-                            width: { size: 45, type: WidthType.PERCENTAGE },
+                            width: { size: 50, type: WidthType.PERCENTAGE },
                             children: [
-                                // Aquí puedes agregar la imagen del logo en el futuro si lo deseas
-                                crearParrafo("MINISTERIO PÚBLICO", true, AlignmentType.CENTER),
-                                crearParrafo("PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS", true, AlignmentType.CENTER),
-                                crearParrafo("-SEGUNDO DESPACHO-", true, AlignmentType.CENTER),
+                                crearParrafoEncabezado("MINISTERIO PÚBLICO", true),
+                                crearParrafoEncabezado("PRIMERA FISCALÍA ESPECIALIZADA EN DELITOS DE CORRUPCIÓN DE FUNCIONARIOS", true),
+                                crearParrafoEncabezado("-SEGUNDO DESPACHO-", true),
                             ],
                         }),
+                        // COLUMNA DERECHA (Metadatos desplazados a la derecha 1cm)
                         new TableCell({
-                            width: { size: 55, type: WidthType.PERCENTAGE },
+                            width: { size: 50, type: WidthType.PERCENTAGE },
                             children: [
-                                crearParrafo('"Año de la Esperanza y el Fortalecimiento de la Democracia"', false, AlignmentType.CENTER, true),
-                                crearParrafo(""), // Espacio
-                                crearDatoEncabezado("CARPETA FISCAL", datos.carpetaFiscal),
-                                crearDatoEncabezado("INVESTIGADOS", datos.investigados),
-                                crearDatoEncabezado("AGRAVIADO", datos.agraviado),
-                                crearDatoEncabezado("DELITO", datos.delito),
-                                crearDatoEncabezado("FISCAL A CARGO", datos.fiscal),
-                                crearDatoEncabezado("ASISTENTE", datos.asistente),
+                                crearParrafoEncabezado('"Año de la Esperanza y el Fortalecimiento de la Democracia"', false, AlignmentType.CENTER, true),
+                                new Paragraph({ spacing: { after: 150 } }), // Espacio
+                                crearDatoEncabezado("CARPETA FISCAL", limpiarValor(datos.carpetaFiscal, "S/N")),
+                                crearDatoEncabezado("INVESTIGADOS", limpiarValor(datos.investigados, "Los que resulten responsables")),
+                                crearDatoEncabezado("AGRAVIADO", AGRAVIADO_FIJO), // Variable Estática
+                                crearDatoEncabezado("DELITO", limpiarValor(datos.delito, "Por determinar")),
+                                crearDatoEncabezado("FISCAL A CARGO", FISCAL_FIJO), // Variable Estática
+                                crearDatoEncabezado("ASISTENTE", ASISTENTE_FIJO), // Variable Estática
                             ],
                         }),
                     ],
@@ -452,26 +471,28 @@ ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
         const doc = new Document({
             sections: [{
                 properties: {
-                    page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } // Márgenes de 2.5cm
+                    page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } // Márgenes 2.5cm
                 },
                 children: [
                     tablaEncabezado,
-                    new Paragraph({ spacing: { before: 400, after: 400 } }), // Salto de línea amplio
+                    new Paragraph({ spacing: { before: 500, after: 300 } }), // Espacio entre encabezado y título
                     
-                    // TÍTULO CENTRAL GIGANTE
+                    // TÍTULO CENTRAL
                     new Paragraph({
                         children: [new TextRun({ text: tipoDocumento.toUpperCase(), bold: true, font: "Arial", size: 28 })],
                         alignment: AlignmentType.CENTER,
                         spacing: { after: 300 }
                     }),
 
-                    // NRO DE DISPOSICIÓN Y FECHA
+                    // NRO DE DISPOSICIÓN Y FECHA (Ahora alineados a la izquierda)
                     new Paragraph({
-                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${datos.nroDisposicion}`, bold: true, underline: {}, font: "Arial", size: 24 })],
+                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${limpiarValor(datos.nroDisposicion, "S/N")}`, bold: true, underline: {}, font: "Arial", size: 24 })],
+                        alignment: AlignmentType.LEFT,
                         spacing: { after: 50 }
                     }),
                     new Paragraph({
-                        children: [new TextRun({ text: datos.fechaLarga, font: "Arial", size: 24, bold: true })],
+                        children: [new TextRun({ text: limpiarValor(datos.fechaLarga, "Lima, a la fecha de su emisión"), font: "Arial", size: 24 })],
+                        alignment: AlignmentType.LEFT,
                         spacing: { after: 400 }
                     }),
 
@@ -497,7 +518,6 @@ ENTRÉGAME ÚNICAMENTE UN OBJETO JSON VÁLIDO. No uses markdown fuera del JSON.
             }],
         });
 
-        // 4. EMPAQUETADO Y ENVÍO
         const buffer = await Packer.toBuffer(doc);
         res.setHeader('Content-Disposition', 'attachment; filename=Proyecto_Fiscal.docx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
