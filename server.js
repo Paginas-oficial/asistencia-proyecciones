@@ -319,12 +319,12 @@ app.post('/api/generar-documento', async (req, res) => {
 
         console.log(`[Ruta 5] Iniciando redacción de plantilla visual: ${tipoDocumento}`);
 
-        // DATOS FIJOS (Ahorro masivo de tokens y Cero "undefined")
+        // DATOS FIJOS DEL DESPACHO
         const FISCAL_FIJO = "Yeltsin L. A. Leiva Chara";
         const ASISTENTE_FIJO = "Debora J. Sotelo Ahuanari";
         const AGRAVIADO_FIJO = "El Estado";
 
-        // PROMPT DE EXTRACCIÓN (Nuevas reglas para Investigados y Delito)
+        // PROMPT DE EXTRACCIÓN SÚPER OPTIMIZADO
         const promptRedaccion = `
 Rol: Eres un Fiscal Provincial Titular, jurista experto en Derecho Penal.
 
@@ -332,19 +332,24 @@ Objetivo: Analizar la carpeta fiscal (PDFs adjuntos) y extraer información para
 Instrucción Adicional: "${instruccion}"
 
 REGLAS DE OBLIGATORIO CUMPLIMIENTO:
-1. Extrae los metadatos solicitados. Si un dato no existe, NUNCA devuelvas "undefined" ni "null". Usa "S/N" o "Por determinar".
-2. Para el campo "investigados", identifica al principal y OBLIGATORIAMENTE añade el texto " y otros" al final. (Ejemplo: "Eder L. Álvarez Paucar y otros").
-3. Para el campo "delito", extrae SOLO UN (1) delito principal. Prohibido poner comas o enumerar varios. (Ejemplo: "Negociación Incompatible").
-4. Desarrolla la argumentación jurídica detallada según tu rol experto. Usa nomenclatura estricta para los documentos probatorios.
+1. "investigadosCabecera": Solo el nombre principal + " y otros".
+2. "investigadosTodos": Nombres completos de TODOS los investigados (añadir " Y L.Q.R.R." al final si corresponde).
+3. "delitoCabecera": Un (1) solo delito principal.
+4. "delitosTodos": Todos los delitos identificados.
+5. "fechaL1": Ciudad, día y mes (Ej: "Lima, treinta de julio").
+6. "fechaL2": Año en letras (Ej: "de dos mil veintiséis").
+7. Redacta los apartados jurídicos con rigor y nomenclatura exacta. No incluyas el apartado DADO CUENTA, el sistema lo generará automáticamente.
 
 Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
 {
   "carpetaFiscal": "Ej: 123-2024",
-  "investigados": "Nombre del investigado principal y otros",
-  "delito": "Un solo tipo penal principal",
+  "investigadosCabecera": "Principal y otros",
+  "investigadosTodos": "Todos los nombres",
+  "delitoCabecera": "Un solo tipo penal",
+  "delitosTodos": "Todos los delitos identificados",
   "nroDisposicion": "Ej: 04",
-  "fechaLarga": "Ej: Lima, treinta de julio de dos mil veintiséis",
-  "dadoCuenta": "Redacta el sustento inicial (documento que da origen).",
+  "fechaL1": "Ej: Lima, treinta de julio",
+  "fechaL2": "Ej: de dos mil veintiséis",
   "hechosDenunciados": "Síntesis de la imputación.",
   "calificacionJuridica": "Análisis del tipo penal.",
   "elementosConviccion": "Argumentación de las pruebas.",
@@ -360,14 +365,13 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
         } catch (e) {
             console.log("Error parseando JSON, aplicando rescate de emergencia.");
             datos = {
-                carpetaFiscal: "S/N", investigados: "Los que resulten responsables", delito: "Por determinar", 
-                nroDisposicion: "S/N", fechaLarga: "Lima, a la fecha de su emisión",
-                dadoCuenta: "Información extraída no estructurada correctamente.",
+                carpetaFiscal: "S/N", investigadosCabecera: "Los que resulten responsables", investigadosTodos: "LOS QUE RESULTEN RESPONSABLES", 
+                delitoCabecera: "Por determinar", delitosTodos: "POR DETERMINAR", nroDisposicion: "S/N", 
+                fechaL1: "Lima, a la fecha", fechaL2: "de su emisión",
                 hechosDenunciados: textoCrudo, calificacionJuridica: "", elementosConviccion: "", analisisYConclusion: ""
             };
         }
 
-        // FUNCIÓN ANTI-UNDEFINED: Limpia cualquier "undefined" que la IA haya alucinado
         const limpiarValor = (valor, porDefecto) => {
             if (!valor || valor === "undefined" || valor === "null" || valor.trim() === "") return porDefecto;
             return valor;
@@ -377,7 +381,6 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
         // HERRAMIENTAS DE MAQUETACIÓN VISUAL (DOCX)
         // =========================================================
         
-        // Párrafo estándar para el cuerpo (Arial 11 = size 22)
         const crearParrafo = (texto, bold = false, alignment = AlignmentType.JUSTIFIED, italics = false) => {
             return new Paragraph({
                 children: [new TextRun({ text: texto, bold: bold, italics: italics, font: "Arial", size: 22 })],
@@ -386,7 +389,6 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             });
         };
 
-        // Párrafo exclusivo para el encabezado (Tamaño 8 = size 16)
         const crearParrafoEncabezado = (texto, bold = false, alignment = AlignmentType.CENTER, italics = false) => {
             return new Paragraph({
                 children: [new TextRun({ text: texto, bold: bold, italics: italics, font: "Arial", size: 16 })], 
@@ -395,17 +397,16 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             });
         };
 
-        // Párrafo de metadatos (Tamaño 8) con tabulación corregida y sangría
         const crearDatoEncabezado = (etiqueta, valor) => {
             return new Paragraph({
                 children: [
                     new TextRun({ text: etiqueta, font: "Arial", size: 16 }),
                     new TextRun({ text: `\t: ${valor}`, font: "Arial", size: 16 })
                 ],
-                tabStops: [{ type: TabStopType.LEFT, position: 2200 }], // 2200 twips asegura que rebase "FISCAL A CARGO"
+                tabStops: [{ type: TabStopType.LEFT, position: 2200 }], // Alineación perfecta de los ":"
                 spacing: { after: 0, line: 240 },
                 alignment: AlignmentType.LEFT,
-                indent: { left: 567 } // 567 twips = 1 cm exacto a la derecha
+                indent: { left: 567 } // 1 cm a la derecha
             });
         };
 
@@ -430,7 +431,6 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
         // CONSTRUCCIÓN ESTRUCTURAL DEL DOCUMENTO
         // =========================================================
         
-        // Tabla invisible para el membrete dividido
         const tablaEncabezado = new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
             borders: {
@@ -441,7 +441,6 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             rows: [
                 new TableRow({
                     children: [
-                        // COLUMNA IZQUIERDA (Logo y Ministerio)
                         new TableCell({
                             width: { size: 45, type: WidthType.PERCENTAGE },
                             children: [
@@ -450,16 +449,15 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                                 crearParrafoEncabezado("-SEGUNDO DESPACHO-", true),
                             ],
                         }),
-                        // COLUMNA DERECHA (Metadatos desplazados)
                         new TableCell({
                             width: { size: 55, type: WidthType.PERCENTAGE },
                             children: [
                                 crearParrafoEncabezado('"Año de la Esperanza y el Fortalecimiento de la Democracia"', false, AlignmentType.CENTER, true),
-                                new Paragraph({ spacing: { after: 150 } }), // Espacio
+                                new Paragraph({ spacing: { after: 150 } }),
                                 crearDatoEncabezado("CARPETA FISCAL", limpiarValor(datos.carpetaFiscal, "S/N")),
-                                crearDatoEncabezado("INVESTIGADOS", limpiarValor(datos.investigados, "Los que resulten responsables")),
+                                crearDatoEncabezado("INVESTIGADOS", limpiarValor(datos.investigadosCabecera, "Los que resulten responsables")),
                                 crearDatoEncabezado("AGRAVIADO", AGRAVIADO_FIJO), 
-                                crearDatoEncabezado("DELITO", limpiarValor(datos.delito, "Por determinar")),
+                                crearDatoEncabezado("DELITO", limpiarValor(datos.delitoCabecera, "Por determinar")),
                                 crearDatoEncabezado("FISCAL A CARGO", FISCAL_FIJO), 
                                 crearDatoEncabezado("ASISTENTE", ASISTENTE_FIJO), 
                             ],
@@ -469,15 +467,15 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             ],
         });
 
-        // Ensamble final del documento
+        // ENSAMBLE FINAL
         const doc = new Document({
             sections: [{
                 properties: {
-                    page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } // Márgenes 2.5cm
+                    page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } 
                 },
                 children: [
                     tablaEncabezado,
-                    new Paragraph({ spacing: { before: 500, after: 300 } }), // Espacio entre encabezado y título
+                    new Paragraph({ spacing: { before: 500, after: 300 } }),
                     
                     // TÍTULO CENTRAL
                     new Paragraph({
@@ -486,34 +484,56 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                         spacing: { after: 300 }
                     }),
 
-                    // NRO DE DISPOSICIÓN Y FECHA (Alineados a la izquierda)
+                    // FECHA EN DOS LÍNEAS (Sin espacio extra entre ellas)
                     new Paragraph({
-                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${limpiarValor(datos.nroDisposicion, "S/N")}`, bold: true, underline: {}, font: "Arial", size: 24 })],
+                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${limpiarValor(datos.nroDisposicion, "00")}`, bold: true, underline: {}, font: "Arial", size: 22 })],
                         alignment: AlignmentType.LEFT,
-                        spacing: { after: 50 }
+                        spacing: { after: 50 } // Espacio mínimo
                     }),
                     new Paragraph({
-                        children: [new TextRun({ text: limpiarValor(datos.fechaLarga, "Lima, a la fecha de su emisión"), font: "Arial", size: 24 })],
+                        children: [new TextRun({ text: limpiarValor(datos.fechaL1, "Lima, a la fecha"), font: "Arial", size: 22 })],
                         alignment: AlignmentType.LEFT,
-                        spacing: { after: 400 }
+                        spacing: { after: 0 } // Ningún espacio abajo para que se pegue a la línea 2
+                    }),
+                    new Paragraph({
+                        children: [new TextRun({ text: limpiarValor(datos.fechaL2, "de su emisión"), font: "Arial", size: 22 })],
+                        alignment: AlignmentType.LEFT,
+                        spacing: { after: 400 } // Espacio grande hacia el siguiente título
                     }),
 
-                    // CUERPO DEL DOCUMENTO
+                    // I. DADO CUENTA (Con texto fijo y variables inyectadas automáticamente)
                     crearTituloRomano("I", "DADO CUENTA"),
-                    ...procesarTextoMultilinea(datos.dadoCuenta),
+                    new Paragraph({
+                        children: [
+                            new TextRun({ text: "El estado actual de la presente investigación fiscal, en los seguidos contra ", font: "Arial", size: 22 }),
+                            new TextRun({ text: limpiarValor(datos.investigadosTodos, "LOS QUE RESULTEN RESPONSABLES").toUpperCase(), bold: true, font: "Arial", size: 22 }),
+                            new TextRun({ text: ", por el presunto delito contra la Administración Pública en su modalidad de ", font: "Arial", size: 22 }),
+                            new TextRun({ text: limpiarValor(datos.delitosTodos, "POR DETERMINAR").toUpperCase(), bold: true, font: "Arial", size: 22 }),
+                            new TextRun({ text: ", en agravio del ", font: "Arial", size: 22 }),
+                            new TextRun({ text: "ESTADO", bold: true, font: "Arial", size: 22 }),
+                            new TextRun({ text: ".", font: "Arial", size: 22 })
+                        ],
+                        alignment: AlignmentType.JUSTIFIED,
+                        spacing: { after: 120, line: 276 },
+                    }),
 
+                    // II. DEL MINISTERIO PÚBLICO
                     crearTituloRomano("II", "DEL MINISTERIO PÚBLICO"),
                     crearParrafo("El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, actuando bajo el principio de objetividad e imputación necesaria."),
 
+                    // III. HECHOS DENUNCIADOS E INVESTIGADOS
                     crearTituloRomano("III", "HECHOS DENUNCIADOS E INVESTIGADOS"),
                     ...procesarTextoMultilinea(datos.hechosDenunciados),
 
+                    // IV. CALIFICACIÓN JURÍDICO-PENAL
                     crearTituloRomano("IV", "CALIFICACIÓN JURÍDICO-PENAL"),
                     ...procesarTextoMultilinea(datos.calificacionJuridica),
 
+                    // V. ELEMENTOS DE CONVICCIÓN
                     crearTituloRomano("V", "ELEMENTOS DE CONVICCIÓN"),
                     ...procesarTextoMultilinea(datos.elementosConviccion),
 
+                    // VI. PRONUNCIAMIENTO
                     crearTituloRomano("VI", "PRONUNCIAMIENTO DE ESTE DESPACHO PROVINCIAL"),
                     ...procesarTextoMultilinea(datos.analisisYConclusion),
                 ],
@@ -524,7 +544,7 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
         res.setHeader('Content-Disposition', 'attachment; filename=Proyecto_Fiscal.docx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.send(buffer);
-        console.log(`[Ruta 5] ✅ Documento Word maquetado generado exitosamente.`);
+        console.log(`[Ruta 5] ✅ Documento Word optimizado generado exitosamente.`);
 
     } catch (error) {
         console.error("Error al generar el documento Word:", error);
