@@ -324,7 +324,6 @@ app.post('/api/generar-documento', async (req, res) => {
         const ASISTENTE_FIJO = "Debora J. Sotelo Ahuanari";
         const AGRAVIADO_FIJO = "El Estado";
 
-        // PROMPT DE EXTRACCIÓN SÚPER OPTIMIZADO
         const promptRedaccion = `
 Rol: Eres un Fiscal Provincial Titular, jurista experto en Derecho Penal.
 
@@ -338,7 +337,7 @@ REGLAS DE OBLIGATORIO CUMPLIMIENTO:
 4. "delitosTodos": Todos los delitos identificados.
 5. "fechaL1": Ciudad, día y mes (Ej: "Lima, treinta de julio").
 6. "fechaL2": Año en letras (Ej: "de dos mil veintiséis").
-7. Redacta los apartados jurídicos con rigor y nomenclatura exacta. No incluyas el apartado DADO CUENTA, el sistema lo generará automáticamente.
+7. Redacta los apartados jurídicos con rigor y nomenclatura exacta.
 
 Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
 {
@@ -403,10 +402,10 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                     new TextRun({ text: etiqueta, font: "Arial", size: 16 }),
                     new TextRun({ text: `\t: ${valor}`, font: "Arial", size: 16 })
                 ],
-                tabStops: [{ type: TabStopType.LEFT, position: 2200 }], // Alineación perfecta de los ":"
+                tabStops: [{ type: TabStopType.LEFT, position: 2200 }], 
                 spacing: { after: 0, line: 240 },
                 alignment: AlignmentType.LEFT,
-                indent: { left: 567 } // 1 cm a la derecha
+                indent: { left: 567 } 
             });
         };
 
@@ -419,6 +418,27 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                 alignment: AlignmentType.LEFT,
                 spacing: { before: 300, after: 150 },
                 tabStops: [{ type: TabStopType.LEFT, position: 720 }] 
+            });
+        };
+
+        // NUEVO: Función especializada para listas sub-numeradas (II.1, II.2) con Sangría Francesa
+        const crearParrafoSubnumerado = (numero, texto, incluirFootnote = false) => {
+            const textRuns = [
+                new TextRun({ text: `${numero}\t`, font: "Arial", size: 22 }),
+                new TextRun({ text: texto, font: "Arial", size: 22 })
+            ];
+            
+            // Si el párrafo requiere nota al pie, agregamos la referencia (el "1" chiquito)
+            if (incluirFootnote) {
+                textRuns.push(new FootnoteReferenceRun(1));
+            }
+
+            return new Paragraph({
+                children: textRuns,
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 120, line: 276 },
+                tabStops: [{ type: TabStopType.LEFT, position: 1440 }], // Tabulación para que el texto arranque parejo
+                indent: { left: 1440, hanging: 720 } // La magia de la Sangría Francesa
             });
         };
 
@@ -467,8 +487,21 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             ],
         });
 
-        // ENSAMBLE FINAL
+        // ENSAMBLE FINAL CON NOTAS AL PIE
         const doc = new Document({
+            // NUEVO: Aquí definimos el texto de la nota al pie (Footnote) en la base de la hoja
+            footnotes: {
+                1: {
+                    children: [
+                        new Paragraph({
+                            children: [
+                                new TextRun({ text: " Sánchez Velarde Pablo. El Nuevo Procesal Penal, Editorial Idemsa, Lima-Perú, abril 2009, pág. 73.", font: "Arial", size: 16 })
+                            ],
+                            alignment: AlignmentType.JUSTIFIED,
+                        }),
+                    ],
+                },
+            },
             sections: [{
                 properties: {
                     page: { margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } } 
@@ -477,31 +510,29 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                     tablaEncabezado,
                     new Paragraph({ spacing: { before: 500, after: 300 } }),
                     
-                    // TÍTULO CENTRAL
                     new Paragraph({
                         children: [new TextRun({ text: tipoDocumento.toUpperCase(), bold: true, font: "Arial", size: 28 })],
                         alignment: AlignmentType.CENTER,
                         spacing: { after: 300 }
                     }),
 
-                    // FECHA EN DOS LÍNEAS (Sin espacio extra entre ellas)
                     new Paragraph({
-                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${limpiarValor(datos.nroDisposicion, "00")}`, bold: true, underline: {}, font: "Arial", size: 22 })],
+                        children: [new TextRun({ text: `DISPOSICIÓN N.° ${limpiarValor(datos.nroDisposicion, "00")}`, bold: true, underline: {}, font: "Arial", size: 24 })],
                         alignment: AlignmentType.LEFT,
-                        spacing: { after: 50 } // Espacio mínimo
+                        spacing: { after: 50 } 
                     }),
                     new Paragraph({
-                        children: [new TextRun({ text: limpiarValor(datos.fechaL1, "Lima, a la fecha"), font: "Arial", size: 22 })],
+                        children: [new TextRun({ text: limpiarValor(datos.fechaL1, "Lima, a la fecha"), font: "Arial", size: 24 })],
                         alignment: AlignmentType.LEFT,
-                        spacing: { after: 0 } // Ningún espacio abajo para que se pegue a la línea 2
+                        spacing: { after: 0 } 
                     }),
                     new Paragraph({
-                        children: [new TextRun({ text: limpiarValor(datos.fechaL2, "de su emisión"), font: "Arial", size: 22 })],
+                        children: [new TextRun({ text: limpiarValor(datos.fechaL2, "de su emisión"), font: "Arial", size: 24 })],
                         alignment: AlignmentType.LEFT,
-                        spacing: { after: 400 } // Espacio grande hacia el siguiente título
+                        spacing: { after: 400 } 
                     }),
 
-                    // I. DADO CUENTA (Con texto fijo y variables inyectadas automáticamente)
+                    // I. DADO CUENTA 
                     crearTituloRomano("I", "DADO CUENTA"),
                     new Paragraph({
                         children: [
@@ -517,9 +548,12 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                         spacing: { after: 120, line: 276 },
                     }),
 
-                    // II. DEL MINISTERIO PÚBLICO
+                    // II. DEL MINISTERIO PÚBLICO (NUEVA ESTRUCTURA EXACTA A LA IMAGEN)
                     crearTituloRomano("II", "DEL MINISTERIO PÚBLICO"),
-                    crearParrafo("El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, actuando bajo el principio de objetividad e imputación necesaria."),
+                    crearParrafoSubnumerado("II.1.", "El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, y las demás que le señalan la Constitución Política del Perú y el ordenamiento jurídico de la Nación."),
+                    crearParrafoSubnumerado("II.2.", "Conforme al Art. 14 de su Ley Orgánica y el numeral 2) del Art. IV del Título Preliminar del Código Procesal Penal vigente, el Ministerio Público está obligado, durante el desarrollo de las diligencias de investigación, a actuar bajo el principio de objetividad."),
+                    // El "true" al final de esta función inyecta la cita bibliográfica "1"
+                    crearParrafoSubnumerado("II.3.", "Entendida como “(…) La objetividad de su función plasmada en muchos casos en sus propias decisiones debe ser principio rector para decidir el inicio de una investigación preliminar o preparatoria, o decidir las diligencias necesarias o recopilación de elementos probatorios para alcanzar los fines del proceso y, principalmente, para formular requerimiento acusatorio. No se trata de lo que diga el texto de la denuncia de parte, sino de lo que se evidencia de su contenido o de los que aparezca de las primeras diligencias de investigación (…)”", true),
 
                     // III. HECHOS DENUNCIADOS E INVESTIGADOS
                     crearTituloRomano("III", "HECHOS DENUNCIADOS E INVESTIGADOS"),
