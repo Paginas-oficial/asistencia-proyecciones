@@ -248,70 +248,6 @@ NO digas "Aquí tienes el JSON". Empieza directo con la llave '{'.
 // =================================================================
 // RUTA 3: CEREBRO ESTRATEGA (DILIGENCIAS FALTANTES)
 // =================================================================
-app.post('/api/diligencias', async (req, res) => {
-    try {
-        const { tickets } = req.body;
-        if (!tickets || tickets.length === 0) return res.status(400).json({ error: "No hay tickets" });
-
-        const promptEstratega = `
-Eres un Fiscal Superior Estratega. Tu ÚNICA tarea es leer las partes del expediente e identificar QUÉ FALTA.
-Detecta vacíos en la investigación, personas a las que no se ha interrogado, o documentos financieros/periciales que faltan solicitar.
-
-FORMATO DE SALIDA EXIGIDO (ÚNICAMENTE JSON válido):
-{
-  "elementosFaltantes": [
-    "Tomar declaración testimonial de X persona...",
-    "Solicitar levantamiento del secreto bancario de la empresa Y..."
-  ]
-}`;
-
-        let textoCrudo = await analizarTicketsConGemini(tickets, promptEstratega);
-        textoCrudo = textoCrudo.replace(/```json/gi, "").replace(/```/g, "").trim();
-        res.json(JSON.parse(textoCrudo));
-
-    } catch (error) {
-        console.error("Error en Ruta Diligencias:", error);
-        res.status(500).json({ error: "Fallo al evaluar la estrategia." });
-    }
-});
-
-// =================================================================
-// RUTA 4: EXTRACTOR LITERAL (OCR)
-// =================================================================
-app.post('/api/transcribir-fojas', upload.single('documento'), async (req, res) => {
-  try {
-      const file = req.file;
-      const { instruccion } = req.body; 
-      if (!file || !instruccion) return res.status(400).json({ error: "Faltan datos" });
-
-      console.log(`-> Subiendo a Google OCR: ${file.originalname}`);
-      const uploadResult = await fileManager.uploadFile(file.path, { mimeType: "application/pdf", displayName: file.originalname });
-      fs.unlinkSync(file.path);
-
-      let archivoListo = false; let intentos = 0;
-      while (!archivoListo && intentos < 20) {
-        const fileInfo = await fileManager.getFile(uploadResult.file.name);
-        if (fileInfo.state === "ACTIVE") archivoListo = true;
-        else if (fileInfo.state === "FAILED") throw new Error("Fallo OCR en nube.");
-        else { await new Promise(r => setTimeout(r, 5000)); intentos++; }
-      }
-
-      const promptOCR = `Rol: Asistente de Digitalización. Reglas: Transcribe literalmente según mi instrucción: "${instruccion}". Sin saludos ni formato.`;
-      const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash", systemInstruction: promptOCR });
-      const result = await model.generateContent([{ fileData: { fileUri: uploadResult.file.uri, mimeType: "application/pdf" } }]);
-      
-      try { await fileManager.deleteFile(uploadResult.file.name); } catch(e){}
-      res.json({ texto: result.response.text() });
-
-  } catch (error) {
-      console.error("Error OCR:", error);
-      res.status(500).json({ error: "Fallo en OCR." });
-  }
-});
-
-// =================================================================
-// RUTA 5: REDACTOR JURÍDICO - GENERADOR DE WORD (.DOCX)
-// =================================================================
 app.post('/api/generar-documento', async (req, res) => {
     try {
         const { tipoDocumento, instruccion, tickets } = req.body;
@@ -337,7 +273,7 @@ REGLAS DE OBLIGATORIO CUMPLIMIENTO:
 4. "delitosTodos": Todos los delitos identificados.
 5. "fechaL1": Ciudad, día y mes (Ej: "Lima, treinta de julio").
 6. "fechaL2": Año en letras (Ej: "de dos mil veintiséis").
-7. Redacta los apartados jurídicos con rigor y nomenclatura exacta.
+7. REGLA PARA HECHOS DENUNCIADOS ("hechosDenunciados"): Divide la narración lógica de los hechos en un arreglo (array) de textos separados (ej. 3 a 5 párrafos estructurados). NO incluyas viñetas ni números (ni I, ni 1, ni -), el sistema los numerará automáticamente.
 
 Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
 {
@@ -349,7 +285,11 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
   "nroDisposicion": "Ej: 04",
   "fechaL1": "Ej: Lima, treinta de julio",
   "fechaL2": "Ej: de dos mil veintiséis",
-  "hechosDenunciados": "Síntesis de la imputación.",
+  "hechosDenunciados": [
+    "Primer párrafo descriptivo de los hechos...",
+    "Segundo párrafo detallando el contexto...",
+    "Tercer párrafo sobre la irregularidad y conclusión..."
+  ],
   "calificacionJuridica": "Análisis del tipo penal.",
   "elementosConviccion": "Argumentación de las pruebas.",
   "analisisYConclusion": "Juicio de subsunción y conclusión."
@@ -367,7 +307,8 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                 carpetaFiscal: "S/N", investigadosCabecera: "Los que resulten responsables", investigadosTodos: "LOS QUE RESULTEN RESPONSABLES", 
                 delitoCabecera: "Por determinar", delitosTodos: "POR DETERMINAR", nroDisposicion: "S/N", 
                 fechaL1: "Lima, a la fecha", fechaL2: "de su emisión",
-                hechosDenunciados: textoCrudo, calificacionJuridica: "", elementosConviccion: "", analisisYConclusion: ""
+                hechosDenunciados: [textoCrudo], // Fallback a un array de 1 elemento
+                calificacionJuridica: "", elementosConviccion: "", analisisYConclusion: ""
             };
         }
 
@@ -375,6 +316,9 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             if (!valor || valor === "undefined" || valor === "null" || valor.trim() === "") return porDefecto;
             return valor;
         };
+
+        // Si por alguna razón la IA devolvió un string en lugar de un Array en "hechosDenunciados", lo forzamos a Array
+        const arrayHechos = Array.isArray(datos.hechosDenunciados) ? datos.hechosDenunciados : [datos.hechosDenunciados];
 
         // =========================================================
         // HERRAMIENTAS DE MAQUETACIÓN VISUAL (DOCX)
@@ -421,14 +365,13 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             });
         };
 
-        // NUEVO: Función especializada para listas sub-numeradas (II.1, II.2) con Sangría Francesa
+        // Función clave para listas sub-numeradas (II.1, III.2) con Sangría Francesa
         const crearParrafoSubnumerado = (numero, texto, incluirFootnote = false) => {
             const textRuns = [
                 new TextRun({ text: `${numero}\t`, font: "Arial", size: 22 }),
                 new TextRun({ text: texto, font: "Arial", size: 22 })
             ];
             
-            // Si el párrafo requiere nota al pie, agregamos la referencia (el "1" chiquito)
             if (incluirFootnote) {
                 textRuns.push(new FootnoteReferenceRun(1));
             }
@@ -437,8 +380,8 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                 children: textRuns,
                 alignment: AlignmentType.JUSTIFIED,
                 spacing: { after: 120, line: 276 },
-                tabStops: [{ type: TabStopType.LEFT, position: 1440 }], // Tabulación para que el texto arranque parejo
-                indent: { left: 1440, hanging: 720 } // La magia de la Sangría Francesa
+                tabStops: [{ type: TabStopType.LEFT, position: 1440 }], 
+                indent: { left: 1440, hanging: 720 } 
             });
         };
 
@@ -487,9 +430,8 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             ],
         });
 
-        // ENSAMBLE FINAL CON NOTAS AL PIE
+        // ENSAMBLE FINAL
         const doc = new Document({
-            // NUEVO: Aquí definimos el texto de la nota al pie (Footnote) en la base de la hoja
             footnotes: {
                 1: {
                     children: [
@@ -548,16 +490,16 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                         spacing: { after: 120, line: 276 },
                     }),
 
-                    // II. DEL MINISTERIO PÚBLICO (NUEVA ESTRUCTURA EXACTA A LA IMAGEN)
+                    // II. DEL MINISTERIO PÚBLICO
                     crearTituloRomano("II", "DEL MINISTERIO PÚBLICO"),
                     crearParrafoSubnumerado("II.1.", "El Ministerio Público es el organismo autónomo del Estado que tiene como funciones principales la defensa de la legalidad, los derechos ciudadanos y los intereses públicos, la representación de la sociedad en juicio; así como, la persecución del delito y la reparación civil, y las demás que le señalan la Constitución Política del Perú y el ordenamiento jurídico de la Nación."),
                     crearParrafoSubnumerado("II.2.", "Conforme al Art. 14 de su Ley Orgánica y el numeral 2) del Art. IV del Título Preliminar del Código Procesal Penal vigente, el Ministerio Público está obligado, durante el desarrollo de las diligencias de investigación, a actuar bajo el principio de objetividad."),
-                    // El "true" al final de esta función inyecta la cita bibliográfica "1"
                     crearParrafoSubnumerado("II.3.", "Entendida como “(…) La objetividad de su función plasmada en muchos casos en sus propias decisiones debe ser principio rector para decidir el inicio de una investigación preliminar o preparatoria, o decidir las diligencias necesarias o recopilación de elementos probatorios para alcanzar los fines del proceso y, principalmente, para formular requerimiento acusatorio. No se trata de lo que diga el texto de la denuncia de parte, sino de lo que se evidencia de su contenido o de los que aparezca de las primeras diligencias de investigación (…)”", true),
 
-                    // III. HECHOS DENUNCIADOS E INVESTIGADOS
+                    // III. HECHOS DENUNCIADOS E INVESTIGADOS (AHORA NUMERADO DINÁMICAMENTE)
                     crearTituloRomano("III", "HECHOS DENUNCIADOS E INVESTIGADOS"),
-                    ...procesarTextoMultilinea(datos.hechosDenunciados),
+                    // Usamos .map para recorrer el Array de la IA e inyectar automáticamente III.1, III.2, III.3...
+                    ...arrayHechos.map((hecho, index) => crearParrafoSubnumerado(`III.${index + 1}.`, hecho)),
 
                     // IV. CALIFICACIÓN JURÍDICO-PENAL
                     crearTituloRomano("IV", "CALIFICACIÓN JURÍDICO-PENAL"),
