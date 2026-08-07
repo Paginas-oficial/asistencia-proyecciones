@@ -5,8 +5,8 @@ const fs = require('fs');
 const { GoogleGenerativeAI } = require('@google/generative-ai'); 
 const { HarmCategory, HarmBlockThreshold } = require('@google/generative-ai');
 const { GoogleAIFileManager } = require("@google/generative-ai/server");
-const { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, BorderStyle, WidthType, TabStopType } = require('docx'); // <-- NUEVA LIBRERÍA PARA WORD
-
+ // <-- NUEVA LIBRERÍA PARA WORD
+const { Document, Packer, Paragraph, TextRun, AlignmentType, Table, TableRow, TableCell, BorderStyle, WidthType, TabStopType, FootnoteReferenceRun } = require('docx');
 require('dotenv').config();
 
 const app = express();
