@@ -260,7 +260,7 @@ app.post('/api/generar-documento', async (req, res) => {
         const ASISTENTE_FIJO = "Debora J. Sotelo Ahuanari";
         const AGRAVIADO_FIJO = "El Estado";
 
-        // PROMPT DE EXTRACCIÓN CON REGLAS DE ESTRUCTURACIÓN LEGAL DOGMÁTICA
+        // PROMPT DE EXTRACCIÓN CON EXPANSIÓN DOGMÁTICA Y FÁCTICA
         const promptRedaccion = `
 Rol: Eres un Fiscal Provincial Titular, jurista experto en Derecho Penal.
 
@@ -274,17 +274,17 @@ REGLAS DE OBLIGATORIO CUMPLIMIENTO:
 4. "delitosTodos": Todos los delitos identificados.
 5. "fechaL1": Ciudad, día y mes (Ej: "Lima, treinta de julio").
 6. "fechaL2": Año en letras (Ej: "de dos mil veintiséis").
-7. REGLA PARA HECHOS DENUNCIADOS: Divide la narración lógica de los hechos en un arreglo (array) de textos separados. NO incluyas números ni viñetas, el sistema los numerará.
-8. REGLA PARA CALIFICACIÓN JURÍDICA ("calificacionJuridica"): Devuelve OBLIGATORIAMENTE un ARREGLO de textos (Array). Aplica esta estructura exacta adaptada al delito encontrado en el documento:
+7. REGLA PARA HECHOS DENUNCIADOS ("hechosDenunciados"): NO RESUMAS. Redacta de forma EXTENSA, EXHAUSTIVA y DETALLADA. Construye una narrativa cronológica profunda, explicando el contexto de la entidad, el rol específico de cada investigado, los montos, las irregularidades detectadas y cómo se desarrollaron los hechos. Obligatorio: Divide esta narración en un arreglo (array) de múltiples párrafos largos y robustos (mínimo 4 a 6 párrafos). NO incluyas números ni viñetas al inicio, el sistema los numerará.
+8. REGLA PARA CALIFICACIÓN JURÍDICA ("calificacionJuridica"): El análisis debe ser MUY EXTENSO y PROFUNDO (Nivel Dogmático Superior). Devuelve OBLIGATORIAMENTE un ARREGLO de textos (Array). Aplica esta estructura exacta:
    - "En ese sentido, tenemos que el hecho denunciado se comprendería en el delito de [DELITO], es por ello que este despacho fiscal debe definir dicho delito con la finalidad de que al momento de analizar los hechos denunciados veamos si se tienen elementos que acrediten la comisión del hecho imputado."
-   - "1. El delito de [DELITO] previsto en el artículo [X] del Código Penal, cuyo texto es el siguiente: [REDACTA EL TEXTO DEL CÓDIGO PENAL APLICABLE]."
-   - "1.1. Ahora bien, entrando al análisis de la tipicidad para este delito, el comportamiento típico se presenta cuando..." (Aplica tu análisis experto).
+   - "1. El delito de [DELITO] previsto en el artículo [X] del Código Penal, cuyo texto es el siguiente: [REDACTA EL TEXTO EXACTO DEL CÓDIGO PENAL APLICABLE]."
+   - "1.1. Ahora bien, entrando al análisis de la tipicidad para este delito, el comportamiento típico se presenta cuando..." (Aplica un análisis dogmático extenso de 6 a 8 líneas sobre la naturaleza del delito).
    - "1.2. En su construcción del tipo penal, se observa la concurrencia de diversos elementos, que a continuación se detalla:"
-   - "● Verbo rector: [Explica el verbo rector del delito]."
-   - "● Bien jurídico protegido: [Explica el bien jurídico]."
-   - "● Sujeto activo: [Explica quién es el sujeto activo]."
-   - "● Sujeto pasivo: [Explica quién es el agraviado]."
-   - "● [Otros elementos relevantes como 'Contrato u operación', 'En provecho propio', si aplican al tipo penal]: [Explicación]."
+   - "● Verbo rector: [Explicación dogmática EXTENSA y detallada de la acción típica. Cita jurisprudencia si es posible]."
+   - "● Bien jurídico protegido: [Explicación amplia y teórica del bien jurídico tutelado]."
+   - "● Sujeto activo: [Explicación detallada de la cualidad especial que exige el tipo penal para el autor]."
+   - "● Sujeto pasivo: [Identificación y explicación de por qué el Estado o la entidad es el agraviado]."
+   - "● [Otro elemento relevante si aplica, ej. Provecho propio o de tercero]: [Explicación extensa]."
 
 Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
 {
@@ -296,7 +296,11 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
   "nroDisposicion": "Ej: 04",
   "fechaL1": "Ej: Lima, treinta de julio",
   "fechaL2": "Ej: de dos mil veintiséis",
-  "hechosDenunciados": ["Párrafo 1...", "Párrafo 2..."],
+  "hechosDenunciados": [
+    "Narrativa extensa y detallada del contexto y los hallazgos...",
+    "Explicación exhaustiva del rol de los funcionarios y las irregularidades...",
+    "Detalle de montos, fechas y consecuencias precisas..."
+  ],
   "calificacionJuridica": [
     "En ese sentido, tenemos que el hecho...",
     "1. El delito de...",
@@ -307,8 +311,8 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
     "● Sujeto activo: ...",
     "● Sujeto pasivo: ..."
   ],
-  "elementosConviccion": ["Elemento 1...", "Elemento 2..."],
-  "analisisYConclusion": ["Análisis 1...", "Conclusión final..."]
+  "elementosConviccion": ["Elemento argumentado 1...", "Elemento argumentado 2..."],
+  "analisisYConclusion": ["Análisis de subsunción extenso...", "Conclusión final..."]
 }`;
 
         let textoCrudo = await analizarTicketsConGemini(tickets, promptRedaccion, true);
@@ -401,7 +405,6 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             });
         };
 
-        // NUEVO: Párrafo de viñeta inteligente (Pone en negrita antes de los dos puntos ":")
         const crearParrafoVineta = (texto) => {
             let titulo = texto;
             let resto = "";
@@ -413,29 +416,25 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             return new Paragraph({
                 children: [
                     new TextRun({ text: "●\t", font: "Arial", size: 22 }),
-                    new TextRun({ text: titulo, bold: true, font: "Arial", size: 22 }), // Negrita automática al título
+                    new TextRun({ text: titulo, bold: true, font: "Arial", size: 22 }),
                     new TextRun({ text: resto, font: "Arial", size: 22 })
                 ],
                 alignment: AlignmentType.JUSTIFIED,
                 spacing: { after: 120, line: 276 },
-                tabStops: [{ type: TabStopType.LEFT, position: 2880 }], // Tabulación profunda para viñetas
+                tabStops: [{ type: TabStopType.LEFT, position: 2880 }], 
                 indent: { left: 2880, hanging: 360 } 
             });
         };
 
-        // NUEVO: Procesador Dinámico de Estructuras (Magia de formateo)
         const procesarCalificacionJuridica = (arregloTextos, seccionRomana) => {
             return arregloTextos.map(texto => {
                 texto = texto.trim();
-                
-                // Si es un "1. " o "2. " (ej. "1. El delito de colusión...")
                 if (texto.match(/^\d+\.\s/)) {
                     let parts = texto.split(" ");
                     let num = parts[0]; 
                     let contenido = parts.slice(1).join(" ");
                     return crearParrafoSubnumerado(`${seccionRomana}.${num}`, contenido);
                 } 
-                // Si es un "1.1. " o "1.2. " (ej. "1.1. Ahora bien, entrando...")
                 else if (texto.match(/^\d+\.\d+\.\s/)) {
                     let parts = texto.split(" ");
                     let num = parts[0]; 
@@ -447,16 +446,14 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                         ],
                         alignment: AlignmentType.JUSTIFIED,
                         spacing: { after: 120, line: 276 },
-                        tabStops: [{ type: TabStopType.LEFT, position: 2160 }], // Sangría nivel 3
+                        tabStops: [{ type: TabStopType.LEFT, position: 2160 }],
                         indent: { left: 2160, hanging: 720 } 
                     });
                 } 
-                // Si es una viñeta "● "
                 else if (texto.startsWith("●")) {
                     let contenido = texto.substring(1).trim();
                     return crearParrafoVineta(contenido);
                 } 
-                // Párrafo normal (Ej. "En ese sentido, tenemos que...")
                 else {
                     return crearParrafo(texto);
                 }
@@ -577,9 +574,8 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                     crearTituloRomano("III", "HECHOS DENUNCIADOS E INVESTIGADOS"),
                     ...arrayHechos.map((hecho, index) => crearParrafoSubnumerado(`III.${index + 1}.`, hecho)),
 
-                    // IV. CALIFICACIÓN JURÍDICO-PENAL (NUEVA MAQUETACIÓN DOGMÁTICA)
+                    // IV. CALIFICACIÓN JURÍDICO-PENAL
                     crearTituloRomano("IV", "CALIFICACIÓN JURÍDICO-PENAL DE LOS HECHOS DENUNCIADOS"),
-                    // El "IV" se inyecta para que "1.1." se convierta en "IV.1.1." automáticamente
                     ...procesarCalificacionJuridica(arrayCalificacion, "IV"),
 
                     // V. ELEMENTOS DE CONVICCIÓN
