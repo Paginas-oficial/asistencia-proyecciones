@@ -260,6 +260,7 @@ app.post('/api/generar-documento', async (req, res) => {
         const ASISTENTE_FIJO = "Debora J. Sotelo Ahuanari";
         const AGRAVIADO_FIJO = "El Estado";
 
+        // PROMPT DE EXTRACCIÓN CON REGLAS DE ESTRUCTURACIÓN LEGAL DOGMÁTICA
         const promptRedaccion = `
 Rol: Eres un Fiscal Provincial Titular, jurista experto en Derecho Penal.
 
@@ -273,7 +274,17 @@ REGLAS DE OBLIGATORIO CUMPLIMIENTO:
 4. "delitosTodos": Todos los delitos identificados.
 5. "fechaL1": Ciudad, día y mes (Ej: "Lima, treinta de julio").
 6. "fechaL2": Año en letras (Ej: "de dos mil veintiséis").
-7. REGLA PARA HECHOS DENUNCIADOS ("hechosDenunciados"): Divide la narración lógica de los hechos en un arreglo (array) de textos separados (ej. 3 a 5 párrafos estructurados). NO incluyas viñetas ni números (ni I, ni 1, ni -), el sistema los numerará automáticamente.
+7. REGLA PARA HECHOS DENUNCIADOS: Divide la narración lógica de los hechos en un arreglo (array) de textos separados. NO incluyas números ni viñetas, el sistema los numerará.
+8. REGLA PARA CALIFICACIÓN JURÍDICA ("calificacionJuridica"): Devuelve OBLIGATORIAMENTE un ARREGLO de textos (Array). Aplica esta estructura exacta adaptada al delito encontrado en el documento:
+   - "En ese sentido, tenemos que el hecho denunciado se comprendería en el delito de [DELITO], es por ello que este despacho fiscal debe definir dicho delito con la finalidad de que al momento de analizar los hechos denunciados veamos si se tienen elementos que acrediten la comisión del hecho imputado."
+   - "1. El delito de [DELITO] previsto en el artículo [X] del Código Penal, cuyo texto es el siguiente: [REDACTA EL TEXTO DEL CÓDIGO PENAL APLICABLE]."
+   - "1.1. Ahora bien, entrando al análisis de la tipicidad para este delito, el comportamiento típico se presenta cuando..." (Aplica tu análisis experto).
+   - "1.2. En su construcción del tipo penal, se observa la concurrencia de diversos elementos, que a continuación se detalla:"
+   - "● Verbo rector: [Explica el verbo rector del delito]."
+   - "● Bien jurídico protegido: [Explica el bien jurídico]."
+   - "● Sujeto activo: [Explica quién es el sujeto activo]."
+   - "● Sujeto pasivo: [Explica quién es el agraviado]."
+   - "● [Otros elementos relevantes como 'Contrato u operación', 'En provecho propio', si aplican al tipo penal]: [Explicación]."
 
 Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
 {
@@ -285,14 +296,19 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
   "nroDisposicion": "Ej: 04",
   "fechaL1": "Ej: Lima, treinta de julio",
   "fechaL2": "Ej: de dos mil veintiséis",
-  "hechosDenunciados": [
-    "Primer párrafo descriptivo de los hechos...",
-    "Segundo párrafo detallando el contexto...",
-    "Tercer párrafo sobre la irregularidad y conclusión..."
+  "hechosDenunciados": ["Párrafo 1...", "Párrafo 2..."],
+  "calificacionJuridica": [
+    "En ese sentido, tenemos que el hecho...",
+    "1. El delito de...",
+    "1.1. Ahora bien, entrando...",
+    "1.2. En su construcción...",
+    "● Verbo rector: ...",
+    "● Bien jurídico protegido: ...",
+    "● Sujeto activo: ...",
+    "● Sujeto pasivo: ..."
   ],
-  "calificacionJuridica": "Análisis del tipo penal.",
-  "elementosConviccion": "Argumentación de las pruebas.",
-  "analisisYConclusion": "Juicio de subsunción y conclusión."
+  "elementosConviccion": ["Elemento 1...", "Elemento 2..."],
+  "analisisYConclusion": ["Análisis 1...", "Conclusión final..."]
 }`;
 
         let textoCrudo = await analizarTicketsConGemini(tickets, promptRedaccion, true);
@@ -307,18 +323,22 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                 carpetaFiscal: "S/N", investigadosCabecera: "Los que resulten responsables", investigadosTodos: "LOS QUE RESULTEN RESPONSABLES", 
                 delitoCabecera: "Por determinar", delitosTodos: "POR DETERMINAR", nroDisposicion: "S/N", 
                 fechaL1: "Lima, a la fecha", fechaL2: "de su emisión",
-                hechosDenunciados: [textoCrudo], // Fallback a un array de 1 elemento
-                calificacionJuridica: "", elementosConviccion: "", analisisYConclusion: ""
+                hechosDenunciados: [textoCrudo],
+                calificacionJuridica: [textoCrudo],
+                elementosConviccion: [""], analisisYConclusion: [""]
             };
         }
 
         const limpiarValor = (valor, porDefecto) => {
-            if (!valor || valor === "undefined" || valor === "null" || valor.trim() === "") return porDefecto;
+            if (!valor || valor === "undefined" || valor === "null" || String(valor).trim() === "") return porDefecto;
             return valor;
         };
 
-        // Si por alguna razón la IA devolvió un string en lugar de un Array en "hechosDenunciados", lo forzamos a Array
+        // Forzar a Arrays por si la IA se olvida
         const arrayHechos = Array.isArray(datos.hechosDenunciados) ? datos.hechosDenunciados : [datos.hechosDenunciados];
+        const arrayCalificacion = Array.isArray(datos.calificacionJuridica) ? datos.calificacionJuridica : [datos.calificacionJuridica];
+        const arrayElementos = Array.isArray(datos.elementosConviccion) ? datos.elementosConviccion : [datos.elementosConviccion];
+        const arrayAnalisis = Array.isArray(datos.analisisYConclusion) ? datos.analisisYConclusion : [datos.analisisYConclusion];
 
         // =========================================================
         // HERRAMIENTAS DE MAQUETACIÓN VISUAL (DOCX)
@@ -365,16 +385,12 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             });
         };
 
-        // Función clave para listas sub-numeradas (II.1, III.2) con Sangría Francesa
         const crearParrafoSubnumerado = (numero, texto, incluirFootnote = false) => {
             const textRuns = [
                 new TextRun({ text: `${numero}\t`, font: "Arial", size: 22 }),
                 new TextRun({ text: texto, font: "Arial", size: 22 })
             ];
-            
-            if (incluirFootnote) {
-                textRuns.push(new FootnoteReferenceRun(1));
-            }
+            if (incluirFootnote) textRuns.push(new FootnoteReferenceRun(1));
 
             return new Paragraph({
                 children: textRuns,
@@ -385,9 +401,70 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
             });
         };
 
-        const procesarTextoMultilinea = (texto) => {
-            if (!texto) return [crearParrafo("")];
-            return texto.split('\n').filter(p => p.trim() !== '').map(p => crearParrafo(p.trim()));
+        // NUEVO: Párrafo de viñeta inteligente (Pone en negrita antes de los dos puntos ":")
+        const crearParrafoVineta = (texto) => {
+            let titulo = texto;
+            let resto = "";
+            let indiceDosPuntos = texto.indexOf(":");
+            if (indiceDosPuntos !== -1) {
+                titulo = texto.substring(0, indiceDosPuntos + 1);
+                resto = texto.substring(indiceDosPuntos + 1);
+            }
+            return new Paragraph({
+                children: [
+                    new TextRun({ text: "●\t", font: "Arial", size: 22 }),
+                    new TextRun({ text: titulo, bold: true, font: "Arial", size: 22 }), // Negrita automática al título
+                    new TextRun({ text: resto, font: "Arial", size: 22 })
+                ],
+                alignment: AlignmentType.JUSTIFIED,
+                spacing: { after: 120, line: 276 },
+                tabStops: [{ type: TabStopType.LEFT, position: 2880 }], // Tabulación profunda para viñetas
+                indent: { left: 2880, hanging: 360 } 
+            });
+        };
+
+        // NUEVO: Procesador Dinámico de Estructuras (Magia de formateo)
+        const procesarCalificacionJuridica = (arregloTextos, seccionRomana) => {
+            return arregloTextos.map(texto => {
+                texto = texto.trim();
+                
+                // Si es un "1. " o "2. " (ej. "1. El delito de colusión...")
+                if (texto.match(/^\d+\.\s/)) {
+                    let parts = texto.split(" ");
+                    let num = parts[0]; 
+                    let contenido = parts.slice(1).join(" ");
+                    return crearParrafoSubnumerado(`${seccionRomana}.${num}`, contenido);
+                } 
+                // Si es un "1.1. " o "1.2. " (ej. "1.1. Ahora bien, entrando...")
+                else if (texto.match(/^\d+\.\d+\.\s/)) {
+                    let parts = texto.split(" ");
+                    let num = parts[0]; 
+                    let contenido = parts.slice(1).join(" ");
+                    return new Paragraph({
+                        children: [
+                            new TextRun({ text: `${seccionRomana}.${num}\t`, font: "Arial", size: 22 }),
+                            new TextRun({ text: contenido, font: "Arial", size: 22 })
+                        ],
+                        alignment: AlignmentType.JUSTIFIED,
+                        spacing: { after: 120, line: 276 },
+                        tabStops: [{ type: TabStopType.LEFT, position: 2160 }], // Sangría nivel 3
+                        indent: { left: 2160, hanging: 720 } 
+                    });
+                } 
+                // Si es una viñeta "● "
+                else if (texto.startsWith("●")) {
+                    let contenido = texto.substring(1).trim();
+                    return crearParrafoVineta(contenido);
+                } 
+                // Párrafo normal (Ej. "En ese sentido, tenemos que...")
+                else {
+                    return crearParrafo(texto);
+                }
+            });
+        };
+
+        const procesarTextoMultilinea = (arregloTextos) => {
+            return arregloTextos.map(t => crearParrafo(String(t).trim()));
         };
 
         // =========================================================
@@ -496,22 +573,22 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
                     crearParrafoSubnumerado("II.2.", "Conforme al Art. 14 de su Ley Orgánica y el numeral 2) del Art. IV del Título Preliminar del Código Procesal Penal vigente, el Ministerio Público está obligado, durante el desarrollo de las diligencias de investigación, a actuar bajo el principio de objetividad."),
                     crearParrafoSubnumerado("II.3.", "Entendida como “(…) La objetividad de su función plasmada en muchos casos en sus propias decisiones debe ser principio rector para decidir el inicio de una investigación preliminar o preparatoria, o decidir las diligencias necesarias o recopilación de elementos probatorios para alcanzar los fines del proceso y, principalmente, para formular requerimiento acusatorio. No se trata de lo que diga el texto de la denuncia de parte, sino de lo que se evidencia de su contenido o de los que aparezca de las primeras diligencias de investigación (…)”", true),
 
-                    // III. HECHOS DENUNCIADOS E INVESTIGADOS (AHORA NUMERADO DINÁMICAMENTE)
+                    // III. HECHOS DENUNCIADOS E INVESTIGADOS
                     crearTituloRomano("III", "HECHOS DENUNCIADOS E INVESTIGADOS"),
-                    // Usamos .map para recorrer el Array de la IA e inyectar automáticamente III.1, III.2, III.3...
                     ...arrayHechos.map((hecho, index) => crearParrafoSubnumerado(`III.${index + 1}.`, hecho)),
 
-                    // IV. CALIFICACIÓN JURÍDICO-PENAL
-                    crearTituloRomano("IV", "CALIFICACIÓN JURÍDICO-PENAL"),
-                    ...procesarTextoMultilinea(datos.calificacionJuridica),
+                    // IV. CALIFICACIÓN JURÍDICO-PENAL (NUEVA MAQUETACIÓN DOGMÁTICA)
+                    crearTituloRomano("IV", "CALIFICACIÓN JURÍDICO-PENAL DE LOS HECHOS DENUNCIADOS"),
+                    // El "IV" se inyecta para que "1.1." se convierta en "IV.1.1." automáticamente
+                    ...procesarCalificacionJuridica(arrayCalificacion, "IV"),
 
                     // V. ELEMENTOS DE CONVICCIÓN
                     crearTituloRomano("V", "ELEMENTOS DE CONVICCIÓN"),
-                    ...procesarTextoMultilinea(datos.elementosConviccion),
+                    ...arrayElementos.map((elem, index) => crearParrafoSubnumerado(`V.${index + 1}.`, elem)),
 
                     // VI. PRONUNCIAMIENTO
                     crearTituloRomano("VI", "PRONUNCIAMIENTO DE ESTE DESPACHO PROVINCIAL"),
-                    ...procesarTextoMultilinea(datos.analisisYConclusion),
+                    ...arrayAnalisis.map((analisis, index) => crearParrafoSubnumerado(`VI.${index + 1}.`, analisis)),
                 ],
             }],
         });
@@ -520,7 +597,7 @@ Formato de Salida EXIGIDO: ÚNICAMENTE UN OBJETO JSON VÁLIDO.
         res.setHeader('Content-Disposition', 'attachment; filename=Proyecto_Fiscal.docx');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
         res.send(buffer);
-        console.log(`[Ruta 5] ✅ Documento Word optimizado generado exitosamente.`);
+        console.log(`[Ruta 5] ✅ Documento Word optimizado con Análisis Jurídico generado exitosamente.`);
 
     } catch (error) {
         console.error("Error al generar el documento Word:", error);
