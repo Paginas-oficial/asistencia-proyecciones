@@ -2,7 +2,12 @@ import React, { useState } from 'react';
 import { PDFDocument } from 'pdf-lib';
 
 export default function FiscalDashboard() {
+  // 🧭 GESTOR DE VISTAS
   const [vistaActual, setVistaActual] = useState('dashboard');
+
+  // =====================================================================
+  // 📂 ESTADOS PARA LA TARJETA PRINCIPAL (Arriba - Alta Calidad)
+  // =====================================================================
   const [archivosGlobales, setArchivosGlobales] = useState([]);
   const [ticketsGlobales, setTicketsGlobales] = useState(null); 
 
@@ -15,11 +20,17 @@ export default function FiscalDashboard() {
   const [loadingDiligencias, setLoadingDiligencias] = useState(false);
   const [resultadoDiligencias, setResultadoDiligencias] = useState(null);
 
-  // NUEVOS ESTADOS PARA EL REDACTOR
+  // =====================================================================
+  // 📂 ESTADOS INDEPENDIENTES PARA EL REDACTOR JURÍDICO (Abajo - Comprimidos)
+  // =====================================================================
+  const [archivosRedactor, setArchivosRedactor] = useState([]);
+  const [ticketsRedactor, setTicketsRedactor] = useState(null);
+  
   const [tipoDocumento, setTipoDocumento] = useState('Disposición de Archivo (No Ha Lugar)');
   const [instruccionRedactor, setInstruccionRedactor] = useState('');
   const [loadingRedactor, setLoadingRedactor] = useState(false);
 
+  // ESTADOS PARA LOS MENSAJES DINÁMICOS
   const [mensajeResumen, setMensajeResumen] = useState("⏳ Analizando...");
   const [mensajeInventario, setMensajeInventario] = useState("⏳ Extrayendo...");
   const [mensajeDiligencias, setMensajeDiligencias] = useState("⏳ Evaluando...");
@@ -29,7 +40,10 @@ export default function FiscalDashboard() {
 
   const esperar = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-  const manejarSubidaArchivos = (e) => {
+  // =====================================================================
+  // MANEJO DE ARCHIVOS - EXPEDIENTE PRINCIPAL (ARRIBA)
+  // =====================================================================
+  const manejarSubidaArchivosGlobales = (e) => {
     setArchivosGlobales(Array.from(e.target.files));
     setTicketsGlobales(null); 
     setResultadoResumen(null);
@@ -43,11 +57,56 @@ export default function FiscalDashboard() {
     setResultadoResumen(null);
     setResultadoInventario(null);
     setResultadoDiligencias(null);
-    setInstruccionRedactor('');
     const input = document.getElementById('input-global');
     if (input) input.value = '';
   };
 
+  const obtenerTicketsGlobales = async () => {
+    if (ticketsGlobales) return ticketsGlobales;
+    const tickets = [];
+    for (let i = 0; i < archivosGlobales.length; i++) {
+        const formData = new FormData();
+        formData.append("documentoPdf", archivosGlobales[i]);
+        const res = await fetch(`${API_BASE_URL}/subir-tomo`, { method: "POST", body: formData });
+        if (!res.ok) throw new Error("Fallo al subir archivo");
+        tickets.push((await res.json()).ticket);
+    }
+    setTicketsGlobales(tickets); 
+    return tickets;
+  };
+
+  // =====================================================================
+  // MANEJO DE ARCHIVOS - REDACTOR INDEPENDIENTE (ABAJO)
+  // =====================================================================
+  const manejarSubidaArchivosRedactor = (e) => {
+    setArchivosRedactor(Array.from(e.target.files));
+    setTicketsRedactor(null); // Borra los tickets viejos si cambian el archivo
+  };
+
+  const limpiarExpedienteRedactor = () => {
+    setArchivosRedactor([]);
+    setTicketsRedactor(null);
+    const input = document.getElementById('input-redactor-file');
+    if (input) input.value = '';
+  };
+
+  const obtenerTicketsRedactor = async () => {
+    if (ticketsRedactor) return ticketsRedactor;
+    const tickets = [];
+    for (let i = 0; i < archivosRedactor.length; i++) {
+        const formData = new FormData();
+        formData.append("documentoPdf", archivosRedactor[i]);
+        const res = await fetch(`${API_BASE_URL}/subir-tomo`, { method: "POST", body: formData });
+        if (!res.ok) throw new Error("Fallo al subir archivo comprimido");
+        tickets.push((await res.json()).ticket);
+    }
+    setTicketsRedactor(tickets); 
+    return tickets;
+  };
+
+  // =====================================================================
+  // 1. LÓGICA DE EXTRACCIÓN Y EXPORTACIÓN
+  // =====================================================================
   const extraerPaginas = async (item) => {
     try {
       const archivoCorrecto = archivosGlobales.find(f => f.name === item.tomoOrigen);
@@ -94,22 +153,11 @@ export default function FiscalDashboard() {
   };
   const exportarDiligencias = () => { generarPDF("Estrategia Faltante", resultadoDiligencias.elementosFaltantes.map(item => `<div class="item" style="border-left-color: #ef4444;">${item}</div>`).join('')); };
 
-  const obtenerTicketsGlobales = async () => {
-    if (ticketsGlobales) return ticketsGlobales;
-    const tickets = [];
-    for (let i = 0; i < archivosGlobales.length; i++) {
-        const formData = new FormData();
-        formData.append("documentoPdf", archivosGlobales[i]);
-        const res = await fetch(`${API_BASE_URL}/subir-tomo`, { method: "POST", body: formData });
-        if (!res.ok) throw new Error("Fallo al subir archivo");
-        tickets.push((await res.json()).ticket);
-    }
-    setTicketsGlobales(tickets); 
-    return tickets;
-  };
-
+  // =====================================================================
+  // 4. FUNCIONES DE PROCESAMIENTO
+  // =====================================================================
   const procesarResumen = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente primero.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente primero en la tarjeta superior.");
     setLoadingResumen(true); setResultadoResumen(null);
     for (let intento = 1; intento <= 5; intento++) {
       try {
@@ -128,7 +176,7 @@ export default function FiscalDashboard() {
   };
 
   const procesarInventario = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente primero.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente primero en la tarjeta superior.");
     setLoadingInventario(true); setResultadoInventario(null);
     for (let intento = 1; intento <= 5; intento++) {
       try {
@@ -147,7 +195,7 @@ export default function FiscalDashboard() {
   };
 
   const procesarDiligencias = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente primero.");
+    if (archivosGlobales.length === 0) return alert("Sube el expediente primero en la tarjeta superior.");
     setLoadingDiligencias(true); setResultadoDiligencias(null);
     for (let intento = 1; intento <= 5; intento++) {
       try {
@@ -165,9 +213,10 @@ export default function FiscalDashboard() {
     }
   };
 
-  // NUEVA LÓGICA DEL REDACTOR (Enviando Plantilla + Instrucción)
+  // NUEVA LÓGICA DEL REDACTOR (USA SU PROPIO ESTADO DE ARCHIVOS)
   const procesarRedactor = async () => {
-    if (archivosGlobales.length === 0) return alert("Sube el expediente en la tarjeta superior primero.");
+    // AHORA VERIFICA EL ESTADO INDEPENDIENTE
+    if (archivosRedactor.length === 0) return alert("Sube el expediente comprimido en la tarjeta morada primero.");
     
     setLoadingRedactor(true);
     const maxIntentos = 5;
@@ -175,7 +224,8 @@ export default function FiscalDashboard() {
     for (let intento = 1; intento <= maxIntentos; intento++) {
       try {
         setMensajeRedactor("⏳ Redactando...");
-        const tickets = await obtenerTicketsGlobales();
+        // AHORA USA SUS PROPIOS TICKETS
+        const tickets = await obtenerTicketsRedactor();
         
         const res = await fetch(`${API_BASE_URL}/generar-documento`, { 
             method: "POST", 
@@ -210,6 +260,9 @@ export default function FiscalDashboard() {
     }
   };
 
+  // =====================================================================
+  // ESTILOS PREMIUM
+  // =====================================================================
   const styles = {
     container: { backgroundColor: '#0a0d14', backgroundImage: 'radial-gradient(circle at 50% 0%, #172033 0%, #0a0d14 70%)', color: '#f8fafc', minHeight: '100vh', padding: '2rem', fontFamily: 'system-ui, sans-serif' },
     cardBase: { backgroundColor: 'rgba(30, 41, 59, 0.4)', backdropFilter: 'blur(16px)', padding: '2rem', borderRadius: '28px', border: '1px solid rgba(255, 255, 255, 0.05)', display: 'flex', flexDirection: 'column', position: 'relative' },
@@ -218,6 +271,9 @@ export default function FiscalDashboard() {
     btnDownloadReport: { padding: '12px 24px', borderRadius: '12px', cursor: 'pointer', border: '1px solid', background: 'transparent', fontWeight: 'bold', display: 'inline-block', marginTop: '20px' }
   };
 
+  // =====================================================================
+  // VISTAS DE RESULTADOS (Se mantienen igual)
+  // =====================================================================
   if (vistaActual === 'inventario' && resultadoInventario) {
     return (
       <div style={styles.container}>
@@ -282,11 +338,18 @@ export default function FiscalDashboard() {
           @keyframes pulse-anim { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(0.98); box-shadow: 0 0 20px currentColor; } 100% { opacity: 1; transform: scale(1); } }
           .btn-cargando { animation: pulse-anim 1.5s infinite ease-in-out; cursor: wait !important; pointer-events: none; }
 
+          /* CAJAS DE SUBIDA GRISES (ARRIBA) */
           .file-input-wrapper { position: relative; overflow: hidden; display: block; width: 100%; border: 2px dashed #64748b; padding: 30px; border-radius: 16px; text-align: center; background: rgba(255,255,255,0.02); transition: 0.2s; cursor: pointer; }
           .file-input-wrapper:hover { border-color: #f8fafc; background: rgba(255,255,255,0.05); }
           .file-input-wrapper input[type="file"] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
           .file-label { color: #f8fafc; font-size: 1.1rem; font-weight: 500; pointer-events: none; }
           
+          /* CAJA DE SUBIDA MORADA (ABAJO) */
+          .file-input-wrapper-morado { position: relative; overflow: hidden; display: block; width: 100%; border: 2px dashed #8b5cf6; padding: 30px; border-radius: 16px; text-align: center; background: rgba(139, 92, 246, 0.05); transition: 0.2s; cursor: pointer; margin-bottom: 20px;}
+          .file-input-wrapper-morado:hover { border-color: #a78bfa; background: rgba(139, 92, 246, 0.15); }
+          .file-input-wrapper-morado input[type="file"] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; height: 100%; width: 100%; }
+          .file-label-morado { color: #ddd6fe; font-size: 1.1rem; font-weight: 500; pointer-events: none; }
+
           .btn-principal { width: 100%; padding: 0.85rem; border-radius: 14px; font-weight: bold; cursor: pointer; border: none; color: #fff; transition: 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
           .btn-principal:hover:not(:disabled) { filter: brightness(1.2); }
           .btn-principal:disabled { opacity: 0.5; cursor: not-allowed; }
@@ -303,29 +366,35 @@ export default function FiscalDashboard() {
         <p style={{ color: '#64748b', fontSize: '1.2rem', marginTop: '10px' }}>Asistencia de Proyecciones Estratégicas</p>
       </div>
 
+      {/* ================================================================= */}
+      {/* TARJETA DE ALTA CALIDAD (ARRIBA) - SOLO PARA EXTRACCIÓN/ANÁLISIS */}
+      {/* ================================================================= */}
       <div style={{ maxWidth: '800px', margin: '0 auto 3rem auto' }}>
         <div style={{ ...styles.cardBase, boxShadow: '0 10px 30px rgba(0,0,0,0.5)', borderTop: '2px solid rgba(255, 255, 255, 0.2)', textAlign: 'center' }}>
-          <h2 style={{ color: '#fff', fontSize: '1.5rem', margin: '0 0 1rem 0' }}>📁 Expediente Principal</h2>
-          <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '2rem' }}>Sube el PDF (o sus partes) una sola vez. Las herramientas de abajo lo utilizarán automáticamente.</p>
+          <h2 style={{ color: '#fff', fontSize: '1.5rem', margin: '0 0 1rem 0' }}>📂 Expediente Original (Alta Calidad)</h2>
+          <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '2rem' }}>Sube el PDF sin comprimir. Se usará para generar Resúmenes, Inventario y Cortar Fojas.</p>
           
           <div className="file-input-wrapper">
             <span className="file-label">
               {archivosGlobales.length > 0 
-                ? `✅ ${archivosGlobales.length} archivo(s) cargado(s) y listo(s) para procesar` 
-                : '📥 Haz clic aquí o arrastra los PDFs del expediente'}
+                ? `✅ ${archivosGlobales.length} archivo(s) de alta calidad listos` 
+                : '📥 Haz clic aquí o arrastra los PDFs originales'}
             </span>
-            <input id="input-global" type="file" multiple accept="application/pdf" onChange={manejarSubidaArchivos} />
+            <input id="input-global" type="file" multiple accept="application/pdf" onChange={manejarSubidaArchivosGlobales} />
           </div>
 
           {archivosGlobales.length > 0 && (
             <button onClick={limpiarExpedienteGlobal} style={{ marginTop: '1rem', padding: '0.6rem 1.5rem', borderRadius: '12px', cursor: 'pointer', backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', fontWeight: 'bold' }}>
-              🗑️ Cambiar Expediente
+              🗑️ Cambiar Expediente Original
             </button>
           )}
         </div>
       </div>
       
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2.5rem', maxWidth: '1400px', margin: '0 auto' }}>
+      {/* ================================================================= */}
+      {/* GRID DE HERRAMIENTAS RÁPIDAS (3 TARJETAS) */}
+      {/* ================================================================= */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2.5rem', maxWidth: '1000px', margin: '0 auto 3rem auto' }}>
         
         {/* RESUMEN */}
         <div className="tarjeta-animada tarjeta-azul" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(59, 130, 246, 0.15)', borderTop: '2px solid rgba(59, 130, 246, 0.5)' }}>
@@ -333,12 +402,11 @@ export default function FiscalDashboard() {
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(59, 130, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🧠</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Resumen</h2>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Analiza hechos, cronología y sustento legal del expediente.</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Analiza hechos, cronología y sustento legal.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarResumen} disabled={loadingResumen || archivosGlobales.length === 0} className={`btn-principal ${loadingResumen ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingResumen ? '#3b82f6' : '#2563eb' }}>
               {loadingResumen ? mensajeResumen : "Generar Análisis"}
             </button>
-            {resultadoResumen && <button onClick={() => setVistaActual('resumen')} className="btn-principal" style={{ backgroundColor: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', border: '1px solid rgba(59, 130, 246, 0.3)' }}>👁️ Ver Resultado</button>}
           </div>
         </div>
 
@@ -348,12 +416,11 @@ export default function FiscalDashboard() {
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(16, 185, 129, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🕵️‍♂️</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Inventario</h2>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Extrae pruebas e ignora el ruido procesal. Corta el PDF exacto.</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Extrae pruebas e ignora el ruido procesal.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarInventario} disabled={loadingInventario || archivosGlobales.length === 0} className={`btn-principal ${loadingInventario ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingInventario ? '#10b981' : '#059669' }}>
               {loadingInventario ? mensajeInventario : "Generar Inventario"}
             </button>
-            {resultadoInventario && <button onClick={() => setVistaActual('inventario')} className="btn-principal" style={{ backgroundColor: 'rgba(16, 185, 129, 0.1)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.3)' }}>👁️ Ver Resultado</button>}
           </div>
         </div>
 
@@ -363,28 +430,51 @@ export default function FiscalDashboard() {
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(239, 68, 68, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>🎯</div>
             <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Diligencias</h2>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Identifica vacíos y sugiere actos procesales para formalizar.</p>
+          <p style={{ color: '#94a3b8', fontSize: '0.95rem', marginBottom: '2rem', flexGrow: 1 }}>Sujiere actos procesales para formalizar.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <button onClick={procesarDiligencias} disabled={loadingDiligencias || archivosGlobales.length === 0} className={`btn-principal ${loadingDiligencias ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingDiligencias ? '#ef4444' : '#dc2626' }}>
               {loadingDiligencias ? mensajeDiligencias : "Analizar Estrategia"}
             </button>
-            {resultadoDiligencias && <button onClick={() => setVistaActual('diligencias')} className="btn-principal" style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}>👁️ Ver Resultado</button>}
           </div>
         </div>
 
-        {/* REDACTOR JURÍDICO MEJORADO */}
-        <div className="tarjeta-animada tarjeta-morada" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(139, 92, 246, 0.15)', borderTop: '2px solid rgba(139, 92, 246, 0.5)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1.5rem' }}>
+      </div>
+
+      {/* ================================================================= */}
+      {/* TARJETA INDEPENDIENTE DEL REDACTOR (ABAJO, TAMAÑO COMPLETO) */}
+      {/* ================================================================= */}
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        <div className="tarjeta-animada tarjeta-morada" style={{ ...styles.cardBase, boxShadow: '0 15px 35px -5px rgba(139, 92, 246, 0.2)', borderTop: '2px solid rgba(139, 92, 246, 0.6)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '1rem' }}>
             <div style={{ width: '40px', height: '40px', borderRadius: '12px', background: 'rgba(139, 92, 246, 0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.5rem' }}>✍️</div>
-            <h2 style={{ color: '#fff', fontSize: '1.4rem', margin: 0 }}>Redactor</h2>
+            <h2 style={{ color: '#fff', fontSize: '1.5rem', margin: 0 }}>Redactor Jurídico Especializado</h2>
           </div>
-          <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1rem' }}>Genera disposiciones estructuradas y precisas en formato Word (.docx).</p>
+          <p style={{ color: '#94a3b8', fontSize: '1rem', marginBottom: '1.5rem' }}>
+            Sube aquí los tomos <strong>extremadamente comprimidos</strong>. Esta herramienta procesará el volumen masivo de datos para redactar disposiciones completas en Word.
+          </p>
           
+          {/* INPUT DE ARCHIVO PROPIO PARA EL REDACTOR */}
+          <div className="file-input-wrapper-morado">
+            <span className="file-label-morado">
+              {archivosRedactor.length > 0 
+                ? `✅ ${archivosRedactor.length} archivo(s) comprimido(s) listo(s) para redactar` 
+                : '📥 Haz clic o arrastra PDFs comprimidos aquí'}
+            </span>
+            <input id="input-redactor-file" type="file" multiple accept="application/pdf" onChange={manejarSubidaArchivosRedactor} />
+          </div>
+
+          {archivosRedactor.length > 0 && (
+            <button onClick={limpiarExpedienteRedactor} style={{ marginBottom: '1.5rem', padding: '0.5rem 1rem', borderRadius: '8px', cursor: 'pointer', backgroundColor: 'transparent', border: '1px solid #64748b', color: '#94a3b8', fontWeight: 'bold' }}>
+              🗑️ Limpiar PDFs Comprimidos
+            </button>
+          )}
+          
+          {/* CONTROLES DE INSTRUCCIÓN */}
           <select 
             value={tipoDocumento} 
             onChange={(e) => setTipoDocumento(e.target.value)} 
             className="input-redactor"
-            style={{ fontWeight: 'bold', backgroundColor: 'rgba(139, 92, 246, 0.1)' }}
+            style={{ fontWeight: 'bold', backgroundColor: 'rgba(139, 92, 246, 0.1)', cursor: 'pointer' }}
           >
             <option value="Disposición de Archivo (No Ha Lugar)">Disposición de Archivo (No Ha Lugar)</option>
             <option value="Disposición de Formalización">Disposición de Formalización</option>
@@ -393,20 +483,19 @@ export default function FiscalDashboard() {
 
           <input 
             type="text" 
-            placeholder='Instrucción extra (Ej: Carpeta 123-2024)'
+            placeholder='Instrucción específica o enfoques (Ej: "Aplica el Principio de Confianza")'
             value={instruccionRedactor}
             onChange={(e) => setInstruccionRedactor(e.target.value)}
             className="input-redactor"
           />
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flexGrow: 1, justifyContent: 'flex-end' }}>
-            <button onClick={procesarRedactor} disabled={loadingRedactor || archivosGlobales.length === 0} className={`btn-principal ${loadingRedactor ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingRedactor ? '#8b5cf6' : '#7c3aed' }}>
-              {loadingRedactor ? mensajeRedactor : "Generar Documento"}
-            </button>
-          </div>
+          <button onClick={procesarRedactor} disabled={loadingRedactor || archivosRedactor.length === 0} className={`btn-principal ${loadingRedactor ? 'btn-cargando' : ''}`} style={{ backgroundColor: loadingRedactor ? '#8b5cf6' : '#7c3aed', marginTop: '10px' }}>
+            {loadingRedactor ? mensajeRedactor : "Generar Documento en Word"}
+          </button>
+          
         </div>
-
       </div>
+
     </div>
   );
 }
